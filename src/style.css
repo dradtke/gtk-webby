@@ -1,0 +1,4 @@
+/* Apply a margin to the window's non-titlebar child. */
+window > *:not(.titlebar) {
+	margin: 6px;
+}
