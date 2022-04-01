@@ -1,0 +1,45 @@
+use gtk::glib;
+use std::fmt;
+
+#[derive(Debug)]
+pub enum Error {
+    IoError(std::io::Error),
+    HttpError(reqwest::Error),
+    GlibError(glib::error::Error),
+    XmlError(quick_xml::Error),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::IoError(err) => write!(f, "io error: {}", err),
+            Error::HttpError(err) => write!(f, "http error: {}", err),
+            Error::GlibError(err) => write!(f, "glib error: {}", err),
+            Error::XmlError(err) => write!(f, "xml error: {}", err),
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error {
+        Error::IoError(err)
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Error {
+        Error::HttpError(err)
+    }
+}
+
+impl From<glib::Error> for Error {
+    fn from(err: glib::Error) -> Error {
+        Error::GlibError(err)
+    }
+}
+
+impl From<quick_xml::Error> for Error {
+    fn from(err: quick_xml::Error) -> Error {
+        Error::XmlError(err)
+    }
+}

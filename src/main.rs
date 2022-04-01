@@ -2,7 +2,11 @@ use gtk::{gdk, glib};
 use glib::clone;
 use gtk::prelude::*;
 use std::rc::Rc;
-use std::fmt;
+
+mod error;
+mod util;
+
+type Result<T> = core::result::Result<T, error::Error>;
 
 fn main() {
     let app = gtk::Application::builder()
@@ -31,40 +35,6 @@ struct WindowState {
     http_client: reqwest::blocking::Client,
 }
 
-enum Error {
-    IoError(std::io::Error),
-    HttpError(reqwest::Error),
-    GlibError(glib::error::Error),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::IoError(err) => write!(f, "io error: {}", err),
-            Error::HttpError(err) => write!(f, "http error: {}", err),
-            Error::GlibError(err) => write!(f, "glib error: {}", err),
-        }
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Error {
-        Error::IoError(err)
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(err: reqwest::Error) -> Error {
-        Error::HttpError(err)
-    }
-}
-
-impl From<glib::Error> for Error {
-    fn from(err: glib::Error) -> Error {
-        Error::GlibError(err)
-    }
-}
-
 impl WindowState {
     fn setup_callbacks(window_state: Rc<WindowState>) {
         window_state.address_bar.connect_activate(clone!(@strong window_state => move |_| {
@@ -78,20 +48,25 @@ impl WindowState {
         }
     }
 
-    fn do_go(&self) -> Result<(), Error> {
+    fn do_go(&self) -> Result<()> {
         println!("You entered: {}", self.address_bar.text());
         self.content.set_child(gtk::Widget::NONE);
 
         let text = self.address_bar.text();
         let response = self.http_client.get(text.as_str()).send()?;
-        let response_body = response.text()?;
+        //let response_body = response.text()?;
+
+        // remove web: attributes before passing to the UI parser
 
         let builder = gtk::Builder::new();
-        builder.add_from_string(&response_body)?;
+        //builder.add_from_string(&response_body)?;
 
         match builder.object::<gtk::Widget>("body") {
             Some(body) /* once told me */ => self.content.set_child(Some(&body)),
             None => println!("No object found named 'body'"),
+        }
+
+        for ob in builder.objects() {
         }
 
         Ok(())
@@ -100,6 +75,8 @@ impl WindowState {
 
 fn build_ui(app: &gtk::Application) {
     let address_bar = gtk::Entry::new();
+    address_bar.set_text("http://localhost:8000"); // for testing
+
     let content = gtk::ScrolledWindow::new();
     content.set_child(Some(
         &gtk::Label::builder()
