@@ -1,10 +1,12 @@
 use gtk::{gdk, glib};
 use glib::clone;
 use gtk::prelude::*;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 mod error;
-mod util;
+mod ui;
 
 type Result<T> = core::result::Result<T, error::Error>;
 
@@ -30,46 +32,63 @@ fn main() {
 
 struct WindowState {
     window: gtk::ApplicationWindow,
+    location: String,
     address_bar: gtk::Entry,
     content: gtk::ScrolledWindow,
     http_client: reqwest::blocking::Client,
 }
 
 impl WindowState {
-    fn setup_callbacks(window_state: Rc<WindowState>) {
-        window_state.address_bar.connect_activate(clone!(@strong window_state => move |_| {
-            window_state.go();
+    fn setup_callbacks(window_state: Rc<RefCell<WindowState>>) {
+        window_state.borrow().address_bar.connect_activate(clone!(@strong window_state => move |_| {
+            WindowState::go(window_state.clone());
         }));
     }
 
-    fn go(&self) {
-        if let Err(err) = self.do_go() {
+    fn go(window_state: Rc<RefCell<WindowState>>) {
+        if let Err(err) = WindowState::do_go(window_state) {
             println!("Failed to go: {}", err);
         }
     }
 
-    fn do_go(&self) -> Result<()> {
-        println!("You entered: {}", self.address_bar.text());
-        self.content.set_child(gtk::Widget::NONE);
+    fn do_go(window_state: Rc<RefCell<WindowState>>) -> Result<()> {
+        let mut this = window_state.borrow_mut();
+        this.content.set_child(gtk::Widget::NONE);
 
-        let text = self.address_bar.text();
-        let response = self.http_client.get(text.as_str()).send()?;
-        //let response_body = response.text()?;
-
-        // remove web: attributes before passing to the UI parser
+        this.location = this.address_bar.text().to_string();
+        println!("Navigating to: {}", this.location);
+        let response = this.http_client.get(&this.location).send()?;
+        let def = ui::Definition::new(response)?;
 
         let builder = gtk::Builder::new();
-        //builder.add_from_string(&response_body)?;
+        builder.add_from_string(&def.buildable)?;
 
         match builder.object::<gtk::Widget>("body") {
-            Some(body) /* once told me */ => self.content.set_child(Some(&body)),
+            Some(body) /* once told me */ => this.content.set_child(Some(&body)),
             None => println!("No object found named 'body'"),
         }
 
-        for ob in builder.objects() {
+        for (object_id, target) in &def.hrefs {
+            let target = target.clone();
+            // TODO: what widget types can be clicked?
+            match builder.object::<gtk::Button>(object_id) {
+                Some(widget) => {
+                    // There has to be a better way to do this...
+                    let window_state = window_state.clone();
+                    widget.connect_clicked(move |_| {
+                        let window_state = window_state.clone();
+                        WindowState::href(window_state, &target);
+                    });
+                },
+                None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
+            }
         }
 
         Ok(())
+    }
+
+    fn href(window_state: Rc<RefCell<WindowState>>, target: &String) {
+        println!("Hrefing to {}", target);
     }
 }
 
@@ -99,8 +118,9 @@ fn build_ui(app: &gtk::Application) {
 
     window.present();
 
+    let location = String::from("");
     let http_client = reqwest::blocking::Client::new();
 
-    let window_state = Rc::new(WindowState{window, address_bar, content, http_client});
+    let window_state = Rc::new(RefCell::new(WindowState{window, location, address_bar, content, http_client}));
     WindowState::setup_callbacks(window_state);
 }

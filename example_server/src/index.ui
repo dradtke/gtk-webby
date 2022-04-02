@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-	<object class="GtkButton" id="body">
+	<object class="GtkButton" id="body" web:href="/you-found-me">
 		<property name="label">Button</property>
-		<property name="href">/you-found-me</property>
-		<!-- <signal name="clicked" handler="href" data="/you-found-me"/> -->
 	</object>
 </interface>

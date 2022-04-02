@@ -7,6 +7,8 @@ pub enum Error {
     HttpError(reqwest::Error),
     GlibError(glib::error::Error),
     XmlError(quick_xml::Error),
+    FromUtf8Error(std::string::FromUtf8Error),
+    MissingRequiredAttribute(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -16,6 +18,8 @@ impl fmt::Display for Error {
             Error::HttpError(err) => write!(f, "http error: {}", err),
             Error::GlibError(err) => write!(f, "glib error: {}", err),
             Error::XmlError(err) => write!(f, "xml error: {}", err),
+            Error::FromUtf8Error(err) => write!(f, "from utf8 error: {}", err),
+            Error::MissingRequiredAttribute(name) => write!(f, "missing required attribute: {}", name),
         }
     }
 }
@@ -41,5 +45,11 @@ impl From<glib::Error> for Error {
 impl From<quick_xml::Error> for Error {
     fn from(err: quick_xml::Error) -> Error {
         Error::XmlError(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(err: std::string::FromUtf8Error) -> Error {
+        Error::FromUtf8Error(err)
     }
 }
