@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<child>
+			<object class="GtkButton" id="go-index" web:href="/">
+				<property name="label">Home</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel" id="about-me">
+				<property name="label">
+					What's there to say, really. Click on Home to go back to the main page.
+				</property>
+			</object>
+		</child>
+	</object>
+</interface>

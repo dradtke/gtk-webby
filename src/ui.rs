@@ -27,7 +27,9 @@ impl Definition {
             Ok(attrs)
         }
 
-        let mut trim_byte_start = |bs: &BytesStart| {
+        let mut id_autogenerator = IdAutogenerator::new();
+
+        let mut trim_byte_start = |bs: &BytesStart| -> crate::Result<BytesStart> {
             let attrs = attrs_map(bs)?;
             let mut result = BytesStart::owned_name(bs.name());
             for attr in bs.attributes() {
@@ -35,9 +37,17 @@ impl Definition {
                 if attr.key.starts_with(WEB_PREFIX) {
                     let value = String::from_utf8(attr.value.to_vec())?;
                     match &attr.key[WEB_PREFIX.len()..] {
-                        b"href" => match attrs.get("id") {
-                            Some(id) => { hrefs.insert(id.clone(), value); },
-                            None => return Err(crate::error::Error::MissingRequiredAttribute("id")),
+                        b"href" => {
+                            let id = match attrs.get("id") {
+                                Some(id) => id.clone(),
+                                None => {
+                                    let class = attrs.get("class").expect("expected 'class' attribute to be present");
+                                    let id = id_autogenerator.next(&class);
+                                    result.push_attribute(("id", id.as_str()));
+                                    id
+                                },
+                            };
+                            hrefs.insert(id.to_string(), value);
                         },
                         k => println!("unknown web attribute: {}", String::from_utf8(k.to_vec())?),
                     }
@@ -66,6 +76,20 @@ impl Definition {
     }
 }
 
+struct IdAutogenerator(HashMap<String, i8>);
+
+impl IdAutogenerator {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn next(&mut self, class: &String) -> String {
+        let n = self.0.entry(class.to_string()).or_insert(0);
+        *n += 1;
+        format!("{}-{}", class, *n)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -84,5 +108,14 @@ mod test {
         let def = Definition::new(body.as_bytes())?;
         assert_eq!(def.hrefs, HashMap::from([(String::from("button"), String::from("/some/page"))]));
         Ok(())
+    }
+
+    #[test]
+    pub fn test_autogen_ids() {
+        let mut id_autogenerator = IdAutogenerator::new();
+        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-1");
+        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-2");
+        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-3");
+        assert_eq!(id_autogenerator.next(&"GtkLabel".to_string()), "GtkLabel-1");
     }
 }

@@ -1,6 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-	<object class="GtkButton" id="body" web:href="/you-found-me">
-		<property name="label">Button</property>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkButton" web:href="/about">
+				<property name="label">About</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel">
+				<property name="halign">start</property>
+				<property name="label">
+					Welcome to my GTK-site! Click on About to learn more about me.
+				</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel">
+				<property name="halign">start</property>
+				<property name="label">
+					Here is even more text.
+				</property>
+			</object>
+		</child>
 	</object>
 </interface>
