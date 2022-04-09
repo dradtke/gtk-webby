@@ -9,11 +9,14 @@ pub struct Definition {
     pub buildable: String,
     /// Map of object id to href target.
     pub hrefs: HashMap<String, String>,
+    /// List of scripts to execute.
+    pub scripts: Vec<(crate::script::Lang, String)>,
 }
 
 impl Definition {
     pub fn new<R: Read>(r: R) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
+        let mut scripts = Vec::new();
 
         let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
         let mut writer = quick_xml::Writer::new(Cursor::new(Vec::new()));
@@ -29,7 +32,7 @@ impl Definition {
 
         let mut id_autogenerator = IdAutogenerator::new();
 
-        let mut trim_byte_start = |bs: &BytesStart| -> crate::Result<BytesStart> {
+        let mut trim_bytes_start = |bs: &BytesStart| -> crate::Result<BytesStart> {
             let attrs = attrs_map(bs)?;
             let mut result = BytesStart::owned_name(bs.name());
             for attr in bs.attributes() {
@@ -60,18 +63,62 @@ impl Definition {
 
         let mut buf = Vec::new();
 
+        let mut reading_script = false;
+        let mut current_script_type = None;
+        let mut current_script = Vec::new();
+
         loop {
+            const SCRIPT_TAG: &[u8] = b"web:script";
+
             match reader.read_event(&mut buf)? {
                 Event::Eof => break,
-                Event::Start(ref bs) => writer.write_event(Event::Start(trim_byte_start(bs)?))?,
-                Event::Empty(ref bs) => writer.write_event(Event::Empty(trim_byte_start(bs)?))?,
+                Event::Start(ref bs) => {
+                    if bs.name() == SCRIPT_TAG{
+                        match attrs_map(bs)?.get("type") {
+                            Some(r#type) => match crate::script::Lang::from(r#type) {
+                                Some(lang) => {
+                                    current_script_type = Some(lang);
+                                    current_script = Vec::new();
+                                    reading_script = true;
+                                },
+                                None => println!("script tag found with unknown type '{}'", r#type),
+                            },
+                            None => println!("script tag found, but no type was specified"),
+                        }
+                    } else {
+                        writer.write_event(Event::Start(trim_bytes_start(bs)?))?;
+                    }
+                },
+                Event::Text(bt) => {
+                    if reading_script {
+                        current_script.append(&mut bt.unescaped()?.to_vec());
+                    } else {
+                        writer.write_event(Event::Text(bt))?;
+                    }
+                },
+                Event::End(be) => {
+                    if be.name() == SCRIPT_TAG {
+                        if reading_script {
+                            scripts.push((current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
+                            reading_script = false;
+                        }
+                    } else {
+                        writer.write_event(Event::End(be))?;
+                    }
+                },
+                Event::Empty(ref bs) => writer.write_event(Event::Empty(trim_bytes_start(bs)?))?,
                 e => writer.write_event(&e)?,
             }
+        }
+
+        for (lang, script) in &scripts {
+            println!("Found {:?} script: {}", &lang, &script);
         }
 
         Ok(Definition{
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
+            scripts,
         })
     }
 }

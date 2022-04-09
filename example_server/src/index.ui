@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
+	<web:script type="lua">
+		print("hello world")
+	</web:script>
 	<object class="GtkBox" id="body">
 		<property name="orientation">vertical</property>
 		<property name="halign">start</property>
