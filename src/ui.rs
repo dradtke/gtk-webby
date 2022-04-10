@@ -10,13 +10,13 @@ pub struct Definition {
     /// Map of object id to href target.
     pub hrefs: HashMap<String, String>,
     /// List of scripts to execute.
-    pub scripts: Vec<(crate::script::Lang, String)>,
+    pub scripts: Vec<crate::script::Script>,
 }
 
 impl Definition {
     pub fn new<R: Read>(r: R) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
-        let mut scripts = Vec::new();
+        let mut scripts: Vec<crate::script::Script> = Vec::new();
 
         let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
         let mut writer = quick_xml::Writer::new(Cursor::new(Vec::new()));
@@ -99,7 +99,7 @@ impl Definition {
                 Event::End(be) => {
                     if be.name() == SCRIPT_TAG {
                         if reading_script {
-                            scripts.push((current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
+                            scripts.push(crate::script::Script::new(current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
                             reading_script = false;
                         }
                     } else {
@@ -109,10 +109,6 @@ impl Definition {
                 Event::Empty(ref bs) => writer.write_event(Event::Empty(trim_bytes_start(bs)?))?,
                 e => writer.write_event(&e)?,
             }
-        }
-
-        for (lang, script) in &scripts {
-            println!("Found {:?} script: {}", &lang, &script);
         }
 
         Ok(Definition{

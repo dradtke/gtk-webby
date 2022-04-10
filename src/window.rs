@@ -8,13 +8,13 @@ pub struct Window {
     app_window: gtk::ApplicationWindow,
     address_bar: gtk::Entry,
     content: gtk::ScrolledWindow,
-    state: RefCell<WindowState>,
+    pub state: RefCell<State>,
 }
 
-pub struct WindowState {
+pub struct State {
     location: String,
     http_client: reqwest::blocking::Client,
-    lua: mlua::Lua,
+    pub lua: mlua::Lua,
 }
 
 impl Window {
@@ -52,8 +52,10 @@ impl Window {
         let http_client = reqwest::blocking::Client::new();
         let lua = mlua::Lua::new();
 
-        let state = WindowState{location, http_client, lua};
+        let state = State{location, http_client, lua};
         let window = Rc::new(Self{app_window, address_bar, content, state: RefCell::new(state)});
+
+        crate::script::lua::register_globals(window.clone());
 
         window.clone().address_bar.connect_activate(move |_| {
             let window = window.clone();
@@ -98,6 +100,10 @@ impl Window {
             }
         }
 
+        for script in &def.scripts {
+            script.execute(&self);
+        }
+
         Ok(())
     }
 
@@ -105,5 +111,14 @@ impl Window {
         let location = crate::util::absolutize_url(&self.state.borrow().location, target);
         self.address_bar.set_text(&location);
         self.go(location);
+    }
+
+    pub fn alert(self: Rc<Self>, text: &str) {
+        let dialog = gtk::Dialog::builder()
+            .title("Alert")
+            .child(&gtk::Label::new(Some(text)))
+            .transient_for(&self.app_window)
+            .build();
+        dialog.present();
     }
 }
