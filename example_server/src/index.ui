@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
 	<web:script type="lua">
-		alert("hello world")
+		print("Running Lua script")
+		click_me = find_widget("click-me")
+		click_me:connect("clicked", function()
+			print("Thank you for clicking me!")
+		end)
 	</web:script>
 	<object class="GtkBox" id="body">
 		<property name="orientation">vertical</property>
@@ -9,6 +13,11 @@
 		<child>
 			<object class="GtkButton" web:href="/about">
 				<property name="label">About</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkButton" id="click-me">
+				<property name="label">Click Me</property>
 			</object>
 		</child>
 		<child>

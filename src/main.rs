@@ -1,5 +1,6 @@
 use gtk::gdk;
 use gtk::prelude::*;
+use mlua::prelude::*;
 
 mod error;
 mod script;
@@ -9,9 +10,18 @@ mod window;
 
 type Result<T> = core::result::Result<T, error::Error>;
 
+pub struct Globals {
+    lua: Lua
+}
+
 fn main() {
+    // glib callbacks need referenced values to be 'static.
+    let globals = Box::leak(Box::new(Globals{
+        lua: Lua::new()
+    }));
+
     let app = gtk::Application::builder()
-        .application_id("com.damienradtke.webish-client")
+        .application_id("com.damienradtke.webish")
         .build();
 
     app.connect_startup(|_| {
@@ -24,7 +34,7 @@ fn main() {
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
         );
     });
-    app.connect_activate(window::Window::new);
+    app.connect_activate(|app| window::Window::new(app, globals));
 
     app.run();
 }
