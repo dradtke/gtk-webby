@@ -75,6 +75,8 @@ impl Window {
             let response = self.state.borrow().http_client.get(&self.state.borrow().location).send()?;
             let def = crate::ui::Definition::new(response)?;
 
+            self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
+
             let builder = gtk::Builder::new();
             builder.add_from_string(&def.buildable)?;
 

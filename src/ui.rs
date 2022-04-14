@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::io::{Read, BufReader, Cursor};
 use quick_xml::events::{Event, BytesStart};
 
-const WEB_PREFIX: &[u8] = b"web:";
-
 pub struct Definition {
     /// The UI definition with web-specific extensions removed.
     pub buildable: String,
@@ -11,12 +9,15 @@ pub struct Definition {
     pub hrefs: HashMap<String, String>,
     /// List of scripts to execute.
     pub scripts: Vec<crate::script::Script>,
+    /// Title of the page.
+    pub title: Option<String>,
 }
 
 impl Definition {
     pub fn new<R: Read>(r: R) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
         let mut scripts: Vec<crate::script::Script> = Vec::new();
+        let mut title = None;
 
         let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
         let mut writer = quick_xml::Writer::new(Cursor::new(Vec::new()));
@@ -37,25 +38,26 @@ impl Definition {
             let mut result = BytesStart::owned_name(bs.name());
             for attr in bs.attributes() {
                 let attr = attr?;
-                if attr.key.starts_with(WEB_PREFIX) {
-                    let value = String::from_utf8(attr.value.to_vec())?;
-                    match &attr.key[WEB_PREFIX.len()..] {
-                        b"href" => {
-                            let id = match attrs.get("id") {
-                                Some(id) => id.clone(),
-                                None => {
-                                    let class = attrs.get("class").expect("expected 'class' attribute to be present");
-                                    let id = id_autogenerator.next(&class);
-                                    result.push_attribute(("id", id.as_str()));
-                                    id
-                                },
-                            };
-                            hrefs.insert(id.to_string(), value);
-                        },
-                        k => println!("unknown web attribute: {}", String::from_utf8(k.to_vec())?),
-                    }
-                } else {
-                    result.push_attribute(attr);
+                match parse_web_tag(attr.key) {
+                    Some(web_tag) => {
+                        let value = String::from_utf8(attr.value.to_vec())?;
+                        match web_tag {
+                            b"href" => {
+                                let id = match attrs.get("id") {
+                                    Some(id) => id.clone(),
+                                    None => {
+                                        let class = attrs.get("class").expect("expected 'class' attribute to be present");
+                                        let id = id_autogenerator.next(&class);
+                                        result.push_attribute(("id", id.as_str()));
+                                        id
+                                    },
+                                };
+                                hrefs.insert(id.to_string(), value);
+                            },
+                            k => println!("unknown web attribute: {}", String::from_utf8(k.to_vec())?),
+                        }
+                    },
+                    None => result.push_attribute(attr),
                 }
             }
             Ok(result)
@@ -67,27 +69,28 @@ impl Definition {
         let mut current_script_type = None;
         let mut current_script = Vec::new();
 
-        loop {
-            const SCRIPT_TAG: &[u8] = b"web:script";
+        const SCRIPT_TAG: &[u8] = b"script";
+        const PAGE_TAG: &[u8] = b"page";
 
+        loop {
             match reader.read_event(&mut buf)? {
                 Event::Eof => break,
-                Event::Start(ref bs) => {
-                    if bs.name() == SCRIPT_TAG{
-                        match attrs_map(bs)?.get("type") {
+                Event::Start(ref bs) => match parse_web_tag(bs.name()) {
+                    Some(SCRIPT_TAG) => {
+                        let attrs = attrs_map(bs)?;
+                        match attrs.get("type") {
+                            None => println!("script tag found, but no type was specified"),
                             Some(r#type) => match crate::script::Lang::from(r#type) {
+                                None => println!("script tag found with unknown type '{}'", r#type),
                                 Some(lang) => {
                                     current_script_type = Some(lang);
                                     current_script = Vec::new();
                                     reading_script = true;
                                 },
-                                None => println!("script tag found with unknown type '{}'", r#type),
                             },
-                            None => println!("script tag found, but no type was specified"),
                         }
-                    } else {
-                        writer.write_event(Event::Start(trim_bytes_start(bs)?))?;
-                    }
+                    },
+                    _ => writer.write_event(Event::Start(trim_bytes_start(bs)?))?,
                 },
                 Event::Text(bt) => {
                     if reading_script {
@@ -96,17 +99,24 @@ impl Definition {
                         writer.write_event(Event::Text(bt))?;
                     }
                 },
-                Event::End(be) => {
-                    if be.name() == SCRIPT_TAG {
+                Event::End(be) => match parse_web_tag(be.name()) {
+                    Some(SCRIPT_TAG) => {
                         if reading_script {
                             scripts.push(crate::script::Script::new(current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
                             reading_script = false;
                         }
-                    } else {
-                        writer.write_event(Event::End(be))?;
-                    }
+                    },
+                    _ => writer.write_event(Event::End(be))?,
                 },
-                Event::Empty(ref bs) => writer.write_event(Event::Empty(trim_bytes_start(bs)?))?,
+                Event::Empty(ref bs) => match parse_web_tag(bs.name()) {
+                    Some(PAGE_TAG) => {
+                        let attrs = attrs_map(bs)?;
+                        if let Some(v) = attrs.get("title") {
+                            title = Some(v.clone());
+                        }
+                    },
+                    _ => writer.write_event(Event::Empty(trim_bytes_start(bs)?))?,
+                },
                 e => writer.write_event(&e)?,
             }
         }
@@ -115,7 +125,17 @@ impl Definition {
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
             scripts,
+            title,
         })
+    }
+}
+
+fn parse_web_tag(name: &[u8]) -> Option<&[u8]> {
+    const PREFIX: &[u8] = b"web:";
+    if name.starts_with(PREFIX) {
+        Some(&name[PREFIX.len()..])
+    } else {
+        None
     }
 }
 
@@ -160,5 +180,12 @@ mod test {
         assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-2");
         assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-3");
         assert_eq!(id_autogenerator.next(&"GtkLabel".to_string()), "GtkLabel-1");
+    }
+
+    #[test]
+    pub fn test_parse_web_tag() {
+        assert_eq!(parse_web_tag(b"web:script"), Some(b"script" as &[u8]));
+        assert_eq!(parse_web_tag(b"web:page"), Some(b"page" as &[u8]));
+        assert_eq!(parse_web_tag(b"object"), None);
     }
 }

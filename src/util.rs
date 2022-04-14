@@ -23,8 +23,8 @@ mod test {
 
     #[test]
     pub fn test_absolutize_url() {
-        assert_eq!(WindowState::absolutize_url(&String::new(), &String::from("http://localhost:8000")), "http://localhost:8000");
-        assert_eq!(WindowState::absolutize_url(&String::from("http://localhost:8000"), &String::from("/sub-page")), "http://localhost:8000/sub-page");
-        assert_eq!(WindowState::absolutize_url(&String::from("http://localhost:8000/sub-page"), &String::from("/another-page")), "http://localhost:8000/another-page");
+        assert_eq!(absolutize_url(&String::new(), &String::from("http://localhost:8000")), "http://localhost:8000");
+        assert_eq!(absolutize_url(&String::from("http://localhost:8000"), &String::from("/sub-page")), "http://localhost:8000/sub-page");
+        assert_eq!(absolutize_url(&String::from("http://localhost:8000/sub-page"), &String::from("/another-page")), "http://localhost:8000/another-page");
     }
 }
