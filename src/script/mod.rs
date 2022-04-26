@@ -12,6 +12,7 @@ pub const WINDOW: &'static str = "window";
 // widget functions
 pub const CONNECT: &'static str = "connect";
 pub const SET_SENSITIVE: &'static str = "set_sensitive";
+pub const SET_LABEL: &'static str = "set_label";
 pub const ADD_CSS_CLASS: &'static str = "add_css_class";
 pub const REMOVE_CSS_CLASS: &'static str = "remove_css_class";
 pub const SET_CSS_CLASSES: &'static str = "set_css_classes";

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Index"/>
+	<web:script type="lua">
+		click_me = find_widget("click-me")
+		click_me:connect("clicked", false, function(this)
+			print("The button was clicked!")
+			-- This doesn't seem to work, the method is nil for some reason
+			this:set_label("Thank you!")
+		end)
+	</web:script>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkButton" id="click-me">
+				<property name="label">Click Me</property>
+			</object>
+		</child>
+	</object>
+</interface>

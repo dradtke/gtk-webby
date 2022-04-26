@@ -1,5 +1,10 @@
-1. Put address bar into header
-2. Window title
-3. Redirection support
-4. Creating/removing widgets dynamically in scripting
-5. (Maybe) Pass "this" parameter into callbacks
+- Put address bar into header?
+- Redirection support (and other HTTP headers)
+- Creating/removing widgets dynamically in scripting
+- (Maybe) Pass "this" parameter into callbacks (already might be passed?)
+- User styling
+- Remote loading of scripts and styles via src attribute
+- Cloning a "template" widget
+- ListModel/TreeModel support?
+- Forms
+- Cookies

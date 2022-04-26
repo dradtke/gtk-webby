@@ -25,7 +25,7 @@ pub fn init(window: Rc<crate::window::Window>) {
             let find_widget = lua.create_function(move |_, id: String| {
                 match window.state.borrow().builder.object::<gtk::Widget>(&id) {
                     // TODO: need to figure out how to drop this widget after it's no longer visible
-                    Some(widget) => Ok(Some(Widget::new(globals, widget))),
+                    Some(widget) => Ok(Some(Widget::new(lua, widget))),
                     None => {
                         println!("No widget found with id: {}", &id);
                         Ok(None)
@@ -43,17 +43,42 @@ pub fn init(window: Rc<crate::window::Window>) {
     }
 }
 
-fn glib_to_lua(value: &glib::Value) -> Option<LuaValue> {
+fn glib_to_lua<'v>(lua: &'static Lua, value: &'v glib::Value) -> Option<LuaValue<'v>> {
     use glib::types::Type;
-    match value.type_() {
-        Type::INVALID | Type::UNIT => Some(LuaValue::Nil), // not sure if it's possible to initialize a unit value...
-        Type::BOOL => Some(LuaValue::Boolean(value.get().unwrap())),
-        // TODO: add more types
-        t => {
-            println!("Unimplemented glib->Lua conversion: {:?}", t);
-            None
-        },
+    let mut current_type = Some(value.type_());
+    while let Some(t) = current_type {
+        match t {
+            Type::INVALID | Type::UNIT => return Some(LuaValue::Nil), // not sure if it's possible to initialize a unit value...
+            Type::BOOL => return Some(LuaValue::Boolean(value.get().unwrap())),
+            _ => (),
+        }
+        if t == gtk::Widget::static_type() {
+            let transformed_value = match value.transform_with_type(t) {
+                Ok(v) => v,
+                Err(err) => {
+                    println!("failed to transform value '{:?}' into type '{:?}': {}", value, t, err);
+                    return None
+                },
+            };
+            let widget: gtk::Widget = match transformed_value.get() {
+                Ok(widget) => widget,
+                Err(err) => {
+                    println!("failed to extract value as widget: {}", err);
+                    return None
+                },
+            };
+            let lua_widget = match Widget::new(lua, widget).to_lua(lua) {
+                Ok(lua_widget) => lua_widget,
+                Err(err) => {
+                    println!("failed to convert widget into lua: {}", err);
+                    return None
+                },
+            };
+            return Some(lua_widget);
+        }
+        current_type = t.parent();
     }
+    None
 }
 
 fn lua_to_glib(value: &LuaValue) -> Option<glib::Value> {
@@ -69,7 +94,7 @@ fn lua_to_glib(value: &LuaValue) -> Option<glib::Value> {
 }
 
 struct Widget {
-    globals: &'static crate::Globals,
+    lua: &'static Lua,
     widget: gtk::Widget,
     // ???: Do Lua registry keys need to be manually deregistered, or signals manually
     // disconnected, in order to prevent memory leaks or weird behavior?
@@ -78,9 +103,9 @@ struct Widget {
 }
 
 impl Widget {
-    fn new(globals: &'static crate::Globals, widget: gtk::Widget) -> Self {
+    fn new(lua: &'static Lua, widget: gtk::Widget) -> Self {
         Self{
-            globals,
+            lua,
             widget,
             signal_ids: Vec::new(),
             registry_keys: Vec::new(),
@@ -91,13 +116,14 @@ impl Widget {
 impl LuaUserData for Widget {
     fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method_mut(super::CONNECT, |_, this, (signal, after, callback): (String, bool, LuaFunction)| {
-            let lua = &this.globals.lua;
+            let lua: &'static Lua = this.lua;
+
             let callback_key = Rc::new(lua.create_registry_value(callback).expect("Failed to create Lua registry value"));
             let weak_callback_ref = Rc::downgrade(&callback_key);
             this.registry_keys.push(callback_key);
 
             let signal_id = this.widget.connect_local(&signal, after, move |values| {
-                let lua_values = match values.iter().map(glib_to_lua).collect::<Option<Vec<LuaValue>>>() {
+                let lua_values = match values.iter().map(|v| glib_to_lua(lua, v)).collect::<Option<Vec<LuaValue>>>() {
                     Some(lua_values) => lua_values,
                     None => {
                         println!("Failed to convert one or more glib values to Lua");
@@ -141,6 +167,13 @@ impl LuaUserData for Widget {
             Ok(())
         });
 
+        methods.add_method(super::SET_LABEL, |_, this, label: String| {
+            if let Ok(button) = this.widget.clone().downcast::<gtk::Button>() {
+                button.set_label(&label);
+            }
+            Ok(())
+        });
+
         methods.add_method(super::ADD_CSS_CLASS, |_, this, css_class: String| {
             this.widget.add_css_class(&css_class);
             Ok(())
@@ -177,7 +210,8 @@ mod test {
     #[test]
     pub fn test_glib_value_to_lua() {
         // TODO: finish adding types, and figure out if it's possible to do null
-        assert_eq!(glib_to_lua(&true.to_value()), Some(LuaValue::Boolean(true)));
-        assert_eq!(glib_to_lua(&false.to_value()), Some(LuaValue::Boolean(false)));
+        let lua = Box::leak(Box::new(Lua::new()));
+        assert_eq!(glib_to_lua(lua, &true.to_value()), Some(LuaValue::Boolean(true)));
+        assert_eq!(glib_to_lua(lua, &false.to_value()), Some(LuaValue::Boolean(false)));
     }
 }

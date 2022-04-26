@@ -17,6 +17,7 @@ pub struct State {
     location: String,
     http_client: reqwest::blocking::Client,
     pub builder: gtk::Builder,
+    user_styles: Option<gtk::CssProvider>,
 }
 
 impl Window {
@@ -54,7 +55,8 @@ impl Window {
         let http_client = reqwest::blocking::Client::new();
 
         let builder = gtk::Builder::new();
-        let state = State{globals, location, http_client, builder};
+        let user_styles = None;
+        let state = State{globals, location, http_client, builder, user_styles};
         let window = Rc::new(Self{app_window, address_bar, content, state: RefCell::new(state)});
 
         crate::script::lua::init(window.clone());
@@ -74,6 +76,26 @@ impl Window {
             println!("Navigating to: {}", &self.state.borrow().location);
             let response = self.state.borrow().http_client.get(&self.state.borrow().location).send()?;
             let def = crate::ui::Definition::new(response)?;
+
+            // Remove existing user-requested CSS styling, if there is any.
+            if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
+                gtk::StyleContext::remove_provider_for_display(
+                    &self.app_window.display(),
+                    self.state.borrow().user_styles.as_ref().unwrap());
+            }
+            self.state.borrow_mut().user_styles = None;
+
+            // If the new page has styles, apply them.
+            if !def.styles.is_empty() {
+                let user_styles = gtk::CssProvider::new();
+                user_styles.load_from_data(def.styles.as_bytes());
+                gtk::StyleContext::add_provider_for_display(
+                    &self.app_window.display(),
+                    &user_styles,
+                    gtk::STYLE_PROVIDER_PRIORITY_USER
+                );
+                self.state.borrow_mut().user_styles = Some(user_styles);
+            }
 
             self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
 

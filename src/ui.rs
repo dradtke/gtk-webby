@@ -2,6 +2,11 @@ use std::collections::HashMap;
 use std::io::{Read, BufReader, Cursor};
 use quick_xml::events::{Event, BytesStart};
 
+const PREFIX: &[u8] = b"web:";
+const SCRIPT_TAG: &[u8] = b"script";
+const STYLE_TAG: &[u8] = b"style";
+const PAGE_TAG: &[u8] = b"page";
+
 pub struct Definition {
     /// The UI definition with web-specific extensions removed.
     pub buildable: String,
@@ -9,6 +14,8 @@ pub struct Definition {
     pub hrefs: HashMap<String, String>,
     /// List of scripts to execute.
     pub scripts: Vec<crate::script::Script>,
+    // Custom styles
+    pub styles: String,
     /// Title of the page.
     pub title: Option<String>,
 }
@@ -16,7 +23,8 @@ pub struct Definition {
 impl Definition {
     pub fn new<R: Read>(r: R) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
-        let mut scripts: Vec<crate::script::Script> = Vec::new();
+        let mut scripts = Vec::new();
+        let mut styles: Vec<u8> = Vec::new();
         let mut title = None;
 
         let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
@@ -69,8 +77,7 @@ impl Definition {
         let mut current_script_type = None;
         let mut current_script = Vec::new();
 
-        const SCRIPT_TAG: &[u8] = b"script";
-        const PAGE_TAG: &[u8] = b"page";
+        let mut reading_style = false;
 
         loop {
             match reader.read_event(&mut buf)? {
@@ -90,11 +97,16 @@ impl Definition {
                             },
                         }
                     },
+                    Some(STYLE_TAG) => {
+                        reading_style = true;
+                    },
                     _ => writer.write_event(Event::Start(trim_bytes_start(bs)?))?,
                 },
                 Event::Text(bt) => {
                     if reading_script {
                         current_script.append(&mut bt.unescaped()?.to_vec());
+                    } else if reading_style {
+                        styles.append(&mut bt.unescaped()?.to_vec());
                     } else {
                         writer.write_event(Event::Text(bt))?;
                     }
@@ -105,6 +117,9 @@ impl Definition {
                             scripts.push(crate::script::Script::new(current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
                             reading_script = false;
                         }
+                    },
+                    Some(STYLE_TAG) => {
+                        reading_style = false;
                     },
                     _ => writer.write_event(Event::End(be))?,
                 },
@@ -121,17 +136,19 @@ impl Definition {
             }
         }
 
+        let styles = String::from_utf8(styles)?;
+
         Ok(Definition{
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
             scripts,
+            styles,
             title,
         })
     }
 }
 
 fn parse_web_tag(name: &[u8]) -> Option<&[u8]> {
-    const PREFIX: &[u8] = b"web:";
     if name.starts_with(PREFIX) {
         Some(&name[PREFIX.len()..])
     } else {
