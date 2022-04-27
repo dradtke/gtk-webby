@@ -3,9 +3,7 @@
 	<web:page title="Index"/>
 	<web:script type="lua">
 		click_me = find_widget("click-me")
-		click_me:connect("clicked", false, function(this)
-			print("The button was clicked!")
-			-- This doesn't seem to work, the method is nil for some reason
+		click_me:connect("clicked", false, function()
 			this:set_label("Thank you!")
 		end)
 	</web:script>

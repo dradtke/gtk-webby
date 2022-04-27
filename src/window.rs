@@ -127,6 +127,8 @@ impl Window {
                 script.execute(&self);
             }
 
+            self.state.borrow().globals.lua.expire_registry_values();
+
             Ok(())
         };
 

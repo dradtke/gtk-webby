@@ -67,10 +67,16 @@ fn glib_to_lua<'v>(lua: &'static Lua, value: &'v glib::Value) -> Option<LuaValue
                     return None
                 },
             };
+
+            // Okay, so putting the userdata into a table works, but using it directly in a
+            // function call doesn't...
+            {
+                lua.globals().set("special_widget_value", Widget::new(lua, widget.clone()).to_lua(lua).unwrap()).unwrap();
+            }
             let lua_widget = match Widget::new(lua, widget).to_lua(lua) {
                 Ok(lua_widget) => lua_widget,
                 Err(err) => {
-                    println!("failed to convert widget into lua: {}", err);
+                    println!("failed to convert widget into Lua value: {}", err);
                     return None
                 },
             };
@@ -123,6 +129,7 @@ impl LuaUserData for Widget {
             this.registry_keys.push(callback_key);
 
             let signal_id = this.widget.connect_local(&signal, after, move |values| {
+                /*
                 let lua_values = match values.iter().map(|v| glib_to_lua(lua, v)).collect::<Option<Vec<LuaValue>>>() {
                     Some(lua_values) => lua_values,
                     None => {
@@ -130,6 +137,7 @@ impl LuaUserData for Widget {
                         return None;
                     },
                 };
+                */
 
                 let key = match weak_callback_ref.upgrade() {
                     Some(key) => key,
@@ -139,8 +147,17 @@ impl LuaUserData for Widget {
                     },
                 };
 
+                // NOTE: This is very hacky, but when passing the widget reference into the
+                // callback arguments directly, it doesn't seem to have any methods registered.
+                // TODO: try to cast values[0] to a widget
+                if values.len() == 1 {
+                    if let Ok(widget_value) = values[0].transform_with_type(gtk::Widget::static_type()) {
+                        lua.globals().set("this", Widget::new(lua, widget_value.get().unwrap()));
+                    }
+                }
+
                 let f: LuaFunction = lua.registry_value(&key).unwrap();
-                let retvals = match f.call::<_, LuaMultiValue>(lua_values) {
+                let retvals = match f.call::<_, LuaMultiValue>(/*lua_values*/()) {
                     Ok(retval) => retval,
                     Err(err) => {
                         println!("Error calling Lua callback: {:?}", err);
