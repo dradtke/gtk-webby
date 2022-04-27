@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use mlua::prelude::*;
 
 pub struct Window {
     #[allow(dead_code)]
@@ -81,7 +80,7 @@ impl Window {
             if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
                 gtk::StyleContext::remove_provider_for_display(
                     &self.app_window.display(),
-                    self.state.borrow().user_styles.as_ref().unwrap());
+                    user_styles);
             }
             self.state.borrow_mut().user_styles = None;
 
@@ -97,20 +96,25 @@ impl Window {
                 self.state.borrow_mut().user_styles = Some(user_styles);
             }
 
+            // Set the window title to that requested by the user, or the location if there was
+            // none.
             self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
 
+            // Construct the GTK builder from the UI definition.
             let builder = gtk::Builder::new();
             builder.add_from_string(&def.buildable)?;
 
+            // Find the "body" widget, and set it as the window's content.
             match builder.object::<gtk::Widget>("body") {
                 Some(body) /* once told me */ => self.content.set_child(Some(&body)),
                 None => println!("No object found named 'body'"),
             }
 
+            // Set up callbacks for any href attributes.
             for (object_id, target) in &def.hrefs {
                 let window = self.clone();
                 let target = target.clone();
-                // ???: what widget types can be clicked?
+                // ???: what other widget types can be clicked?
                 match builder.object::<gtk::Button>(object_id) {
                     Some(widget) => {
                         widget.connect_clicked(move |_| {
@@ -123,10 +127,12 @@ impl Window {
 
             self.state.borrow_mut().builder = builder;
 
+            // Run any defined scripts.
             for script in &def.scripts {
                 script.execute(&self);
             }
 
+            // Clean up any old Lua registry values, such as now-unreferenced callbacks.
             self.state.borrow().globals.lua.expire_registry_values();
 
             Ok(())

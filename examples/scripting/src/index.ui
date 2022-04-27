@@ -2,9 +2,11 @@
 <interface>
 	<web:page title="Index"/>
 	<web:script type="lua">
+		count = 0
 		click_me = find_widget("click-me")
 		click_me:connect("clicked", false, function()
-			this:set_label("Thank you!")
+			count = count + 1
+			this:set_label(string.format("Total clicks: %d", count))
 		end)
 	</web:script>
 	<object class="GtkBox" id="body">
@@ -12,7 +14,7 @@
 		<property name="halign">start</property>
 		<child>
 			<object class="GtkButton" id="click-me">
-				<property name="label">Click Me</property>
+				<property name="label">Click me to start counting</property>
 			</object>
 		</child>
 	</object>

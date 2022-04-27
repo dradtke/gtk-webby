@@ -43,6 +43,7 @@ pub fn init(window: Rc<crate::window::Window>) {
     }
 }
 
+#[allow(dead_code)]
 fn glib_to_lua<'v>(lua: &'static Lua, value: &'v glib::Value) -> Option<LuaValue<'v>> {
     use glib::types::Type;
     let mut current_type = Some(value.type_());
@@ -152,7 +153,9 @@ impl LuaUserData for Widget {
                 // TODO: try to cast values[0] to a widget
                 if values.len() == 1 {
                     if let Ok(widget_value) = values[0].transform_with_type(gtk::Widget::static_type()) {
-                        lua.globals().set("this", Widget::new(lua, widget_value.get().unwrap()));
+                        if let Err(err) = lua.globals().set("this", Widget::new(lua, widget_value.get().unwrap())) {
+                            println!("Failed to set 'this' value before callback: {}", err);
+                        }
                     }
                 }
 
@@ -209,6 +212,7 @@ impl LuaUserData for Widget {
     }
 }
 
+#[allow(dead_code)]
 struct Window {
     globals: &'static crate::Globals,
     window: Rc<crate::window::Window>,
@@ -221,8 +225,7 @@ impl LuaUserData for Window {
 #[cfg(test)]
 mod test {
     use super::*;
-    use glib::value::{Value, ToValue};
-    use glib::types::Type;
+    use glib::value::ToValue;
 
     #[test]
     pub fn test_glib_value_to_lua() {

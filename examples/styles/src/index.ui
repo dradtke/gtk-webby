@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Index"/>
+	<web:style>
+		#body {
+			background: green;
+		}
+
+		.red {
+			color: red;
+		}
+
+		.blue {
+			color: blue;
+		}
+	</web:style>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<property name="name">body</property> <!-- the 'name' property defines the CSS ID -->
+		<child>
+			<object class="GtkLabel">
+				<style><class name="red"/></style>
+				<property name="label">This line is red,</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel">
+				<style><class name="blue"/></style>
+				<property name="label">and this one is blue</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel">
+				<style><class name="red"/></style>
+				<property name="label">Back to red!</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkLabel">
+				<style><class name="blue"/></style>
+				<property name="label">Back to blue!</property>
+			</object>
+		</child>
+	</object>
+</interface>
