@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Index"/>
+	<web:script type="lua">
+		find_widget("submit"):connect("clicked", false, function()
+			local username = find_widget("username"):get_text()
+			local password = find_widget("password"):get_text()
+			submit_form("POST", "", {username=username, password=password})
+		end)
+	</web:script>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkEntry" id="username">
+				<property name="placeholder-text">Username</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkEntry" id="password">
+				<property name="placeholder-text">Password</property>
+				<!--
+					An input-purpose of 8 is equivalent to GTK_INPUT_PURPOSE_PASSWORD.
+					Since the GTK docs don't call out the backing number, it can be retrieved with a small gtk-rs program like:
+
+					use gtk::glib::translate::IntoGlib;
+					println!("{:?}", gtk::InputPurpose::Password.into_glib());
+				-->
+				<property name="input-purpose">8</property>
+				<property name="visibility">false</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkButton" id="submit">
+				<property name="label">Log In</property>
+			</object>
+		</child>
+	</object>
+</interface>

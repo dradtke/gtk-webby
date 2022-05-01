@@ -3,7 +3,9 @@ use mlua::prelude::*;
 
 use gtk::glib;
 use glib::signal::SignalHandlerId;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn init(window: Rc<crate::window::Window>) {
     let globals = window.state.borrow().globals;
@@ -34,6 +36,35 @@ pub fn init(window: Rc<crate::window::Window>) {
             })?;
             lua_globals.set(super::FIND_WIDGET, find_widget)?;
         }
+        {
+            let window = window.clone();
+            let submit_form = lua.create_function(move |_, (method, action, values): (String, String, LuaTable)| {
+                let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+                    Ok(method) => method,
+                    Err(err) => {
+                        return Err(LuaError::ExternalError(Arc::new(err)));
+                    },
+                };
+
+                let mut form_values = HashMap::new();
+                // TODO: automatically convert other types, like boolean?
+                for pair in values.pairs::<String, String>() {
+                    let (key, value) = pair?;
+                    form_values.insert(key, value);
+                }
+
+                let http_client = &window.state.borrow().http_client;
+                match http_client.request(method, crate::util::absolutize_url(&window.state.borrow().location, &action)).form(&form_values).send() {
+                    Ok(response) => {
+                        println!("Form submitted! Response = {:?}", &response);
+                        Ok(())
+                    },
+                    Err(err) => Err(LuaError::ExternalError(Arc::new(err))),
+                }
+                // TODO: redirect or reload the page as needed
+            })?;
+            lua_globals.set(super::SUBMIT_FORM, submit_form)?;
+        }
         lua_globals.set(super::WINDOW, Window{globals, window: window.clone()})?;
         Ok(())
     };
@@ -44,7 +75,8 @@ pub fn init(window: Rc<crate::window::Window>) {
 }
 
 #[allow(dead_code)]
-fn glib_to_lua<'v>(lua: &'static Lua, value: &'v glib::Value) -> Option<LuaValue<'v>> {
+fn glib_to_lua(lua: &'static Lua, value: glib::Value) -> Option<LuaValue> {
+    println!("glib_to_lua: converting {:?}", &value);
     use glib::types::Type;
     let mut current_type = Some(value.type_());
     while let Some(t) = current_type {
@@ -151,7 +183,7 @@ impl LuaUserData for Widget {
                 // NOTE: This is very hacky, but when passing the widget reference into the
                 // callback arguments directly, it doesn't seem to have any methods registered.
                 // TODO: try to cast values[0] to a widget
-                if values.len() == 1 {
+                if values.len() > 0 {
                     if let Ok(widget_value) = values[0].transform_with_type(gtk::Widget::static_type()) {
                         if let Err(err) = lua.globals().set("this", Widget::new(lua, widget_value.get().unwrap())) {
                             println!("Failed to set 'this' value before callback: {}", err);
@@ -182,6 +214,24 @@ impl LuaUserData for Widget {
             Ok(())
         });
 
+        methods.add_method(super::GET_PROPERTY, |_, this, property_name: String| {
+            match this.widget.try_property_value(&property_name) {
+                Ok(value) => Ok(glib_to_lua(this.lua, value)),
+                Err(err) => {
+                    println!("Failed to get property '{}': {}", &property_name, err);
+                    Err(LuaError::ExternalError(Arc::new(err)))
+                },
+            }
+        });
+
+        methods.add_method(super::GET_TEXT, |_, this, ()| {
+            // TODO: work for more than Entry widgets?
+            if let Ok(entry) = this.widget.clone().downcast::<gtk::Entry>() {
+                return Ok(entry.buffer().text());
+            }
+            Err(LuaError::ExternalError(Arc::new(super::Error::UnsupportedOperation)))
+        });
+
         methods.add_method(super::SET_SENSITIVE, |_, this, sensitive: bool| {
             this.widget.set_sensitive(sensitive);
             Ok(())
@@ -190,8 +240,10 @@ impl LuaUserData for Widget {
         methods.add_method(super::SET_LABEL, |_, this, label: String| {
             if let Ok(button) = this.widget.clone().downcast::<gtk::Button>() {
                 button.set_label(&label);
+                Ok(())
+            } else {
+                Err(LuaError::ExternalError(Arc::new(super::Error::UnsupportedOperation)))
             }
-            Ok(())
         });
 
         methods.add_method(super::ADD_CSS_CLASS, |_, this, css_class: String| {
@@ -231,7 +283,7 @@ mod test {
     pub fn test_glib_value_to_lua() {
         // TODO: finish adding types, and figure out if it's possible to do null
         let lua = Box::leak(Box::new(Lua::new()));
-        assert_eq!(glib_to_lua(lua, &true.to_value()), Some(LuaValue::Boolean(true)));
-        assert_eq!(glib_to_lua(lua, &false.to_value()), Some(LuaValue::Boolean(false)));
+        assert_eq!(glib_to_lua(lua, true.to_value()), Some(LuaValue::Boolean(true)));
+        assert_eq!(glib_to_lua(lua, false.to_value()), Some(LuaValue::Boolean(false)));
     }
 }

@@ -21,7 +21,7 @@ fn main() {
     }));
 
     let app = gtk::Application::builder()
-        .application_id("com.damienradtke.webish")
+        .application_id("com.damienradtke.webby")
         .build();
 
     app.connect_startup(|_| {

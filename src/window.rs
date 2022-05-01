@@ -13,8 +13,8 @@ pub struct Window {
 
 pub struct State {
     pub globals: &'static crate::Globals,
-    location: String,
-    http_client: reqwest::blocking::Client,
+    pub location: String,
+    pub http_client: reqwest::blocking::Client,
     pub builder: gtk::Builder,
     user_styles: Option<gtk::CssProvider>,
 }
@@ -74,6 +74,7 @@ impl Window {
             self.state.borrow_mut().location = location;
             println!("Navigating to: {}", &self.state.borrow().location);
             let response = self.state.borrow().http_client.get(&self.state.borrow().location).send()?;
+            // TODO: update the location text accordingly
             let def = crate::ui::Definition::new(response)?;
 
             // Remove existing user-requested CSS styling, if there is any.
