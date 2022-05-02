@@ -12,66 +12,78 @@ pub fn init(window: Rc<crate::window::Window>) {
     let lua = &globals.lua;
 
     let r#do = move || -> LuaResult<()> {
-        let lua_globals = lua.globals();
-        {
-            // Lotta cloning here, not sure how to clean it up.
-            let window = window.clone();
-            let alert = lua.create_function(move |_, text: String| {
-                window.clone().alert(&text);
-                Ok(())
-            })?;
-            lua_globals.set(super::ALERT, alert)?;
+        for (name, function) in global_functions(lua, window.clone())? {
+            lua.globals().set(name, function)?;
         }
-        {
-            let window = window.clone();
-            let find_widget = lua.create_function(move |_, id: String| {
-                match window.state.borrow().builder.object::<gtk::Widget>(&id) {
-                    // TODO: need to figure out how to drop this widget after it's no longer visible
-                    Some(widget) => Ok(Some(Widget::new(lua, widget))),
-                    None => {
-                        println!("No widget found with id: {}", &id);
-                        Ok(None)
-                    },
-                }
-            })?;
-            lua_globals.set(super::FIND_WIDGET, find_widget)?;
-        }
-        {
-            let window = window.clone();
-            let submit_form = lua.create_function(move |_, (method, action, values): (String, String, LuaTable)| {
-                let method = match reqwest::Method::from_bytes(method.as_bytes()) {
-                    Ok(method) => method,
-                    Err(err) => {
-                        return Err(LuaError::ExternalError(Arc::new(err)));
-                    },
-                };
-
-                let mut form_values = HashMap::new();
-                // TODO: automatically convert other types, like boolean?
-                for pair in values.pairs::<String, String>() {
-                    let (key, value) = pair?;
-                    form_values.insert(key, value);
-                }
-
-                let http_client = &window.state.borrow().http_client;
-                match http_client.request(method, crate::util::absolutize_url(&window.state.borrow().location, &action)).form(&form_values).send() {
-                    Ok(response) => {
-                        println!("Form submitted! Response = {:?}", &response);
-                        Ok(())
-                    },
-                    Err(err) => Err(LuaError::ExternalError(Arc::new(err))),
-                }
-                // TODO: redirect or reload the page as needed
-            })?;
-            lua_globals.set(super::SUBMIT_FORM, submit_form)?;
-        }
-        lua_globals.set(super::WINDOW, Window{globals, window: window.clone()})?;
+        lua.globals().set(super::WINDOW, Window{globals, window: window.clone()})?;
         Ok(())
     };
 
     if let Err(err) = r#do() {
         println!("Failed to register lua globals: {}", err);
     }
+}
+
+fn global_functions(lua: &'static Lua, window: Rc<crate::window::Window>) -> LuaResult<HashMap<&'static str, LuaFunction>> {
+    let mut functions = HashMap::new();
+
+    {
+        let window = window.clone();
+        functions.insert(super::ALERT, lua.create_function(move |_, text: String| {
+            window.clone().alert(&text);
+            Ok(())
+        })?);
+    }
+
+    {
+        let window = window.clone();
+        functions.insert(super::FIND_WIDGET, lua.create_function(move |_, id: String| {
+            match window.state.borrow().builder.object::<gtk::Widget>(&id) {
+                // TODO: need to figure out how to drop this widget after it's no longer visible
+                Some(widget) => Ok(Some(Widget::new(lua, widget))),
+                None => {
+                    println!("No widget found with id: {}", &id);
+                    Ok(None)
+                },
+            }
+        })?);
+    }
+
+    {
+        let window = window.clone();
+        functions.insert(super::SUBMIT_FORM, lua.create_function(move |_, (method, action, values): (String, String, LuaTable)| {
+            let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+                Ok(method) => method,
+                Err(err) => {
+                    return Err(LuaError::ExternalError(Arc::new(err)));
+                },
+            };
+
+            let mut form_values = HashMap::new();
+            // TODO: automatically convert other types, like boolean?
+            for pair in values.pairs::<String, String>() {
+                let (key, value) = pair?;
+                form_values.insert(key, value);
+            }
+
+            let http_client = &window.state.borrow().http_client;
+            let response = match http_client.request(method, crate::util::absolutize_url(&window.state.borrow().location, &action)).form(&form_values).send() {
+                Ok(response) => response,
+                Err(err) => {
+                    return Err(LuaError::ExternalError(Arc::new(err)));
+                },
+            };
+
+            if response.status().is_success() {
+                window.clone().reload();
+            } else if response.status().is_redirection() {
+                println!("TODO: Need to redirect, probably to {}", response.url());
+            }
+            Ok(())
+        })?);
+    }
+
+    Ok(functions)
 }
 
 #[allow(dead_code)]

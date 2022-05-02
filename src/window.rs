@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use gtk::glib;
 use gtk::prelude::*;
+use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
 
 pub struct Window {
     #[allow(dead_code)]
@@ -51,7 +53,7 @@ impl Window {
         app_window.present();
 
         let location = String::from("");
-        let http_client = reqwest::blocking::Client::new();
+        let http_client = reqwest::blocking::Client::builder().cookie_store(true).build().expect("failed to build http client");
 
         let builder = gtk::Builder::new();
         let user_styles = None;
@@ -68,85 +70,102 @@ impl Window {
     }
 
     fn go(self: Rc<Self>, location: String) {
-        let r#do = move |location| -> crate::Result<()> {
-            self.content.set_child(gtk::Widget::NONE);
-
-            self.state.borrow_mut().location = location;
-            println!("Navigating to: {}", &self.state.borrow().location);
-            let response = self.state.borrow().http_client.get(&self.state.borrow().location).send()?;
-            // TODO: update the location text accordingly
-            let def = crate::ui::Definition::new(response)?;
-
-            // Remove existing user-requested CSS styling, if there is any.
-            if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
-                gtk::StyleContext::remove_provider_for_display(
-                    &self.app_window.display(),
-                    user_styles);
+        println!("Navigating to: {}", &location);
+        let request = self.state.borrow().http_client.get(&location);
+        let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
+        std::thread::spawn(move || {
+            let response_result = request.send();
+            if let Err(err) = sender.send(response_result) {
+                println!("Failed to send response on channel: {}", err);
             }
-            self.state.borrow_mut().user_styles = None;
+        });
 
-            // If the new page has styles, apply them.
-            if !def.styles.is_empty() {
-                let user_styles = gtk::CssProvider::new();
-                user_styles.load_from_data(def.styles.as_bytes());
-                gtk::StyleContext::add_provider_for_display(
-                    &self.app_window.display(),
-                    &user_styles,
-                    gtk::STYLE_PROVIDER_PRIORITY_USER
-                );
-                self.state.borrow_mut().user_styles = Some(user_styles);
-            }
+        receiver.attach(None, clone!(@strong self as window => move |response_result| {
+            let window = window.clone();
+            let r#do = move || -> crate::Result<()> {
+                let response = response_result?;
+                window.content.set_child(gtk::Widget::NONE);
 
-            // Set the window title to that requested by the user, or the location if there was
-            // none.
-            self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
+                window.state.borrow_mut().location = response.url().to_string();
+                let def = crate::ui::Definition::new(response)?;
 
-            // Construct the GTK builder from the UI definition.
-            let builder = gtk::Builder::new();
-            builder.add_from_string(&def.buildable)?;
-
-            // Find the "body" widget, and set it as the window's content.
-            match builder.object::<gtk::Widget>("body") {
-                Some(body) /* once told me */ => self.content.set_child(Some(&body)),
-                None => println!("No object found named 'body'"),
-            }
-
-            // Set up callbacks for any href attributes.
-            for (object_id, target) in &def.hrefs {
-                let window = self.clone();
-                let target = target.clone();
-                // ???: what other widget types can be clicked?
-                match builder.object::<gtk::Button>(object_id) {
-                    Some(widget) => {
-                        widget.connect_clicked(move |_| {
-                            window.clone().href(&target);
-                        });
-                    },
-                    None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
+                // Remove existing user-requested CSS styling, if there is any.
+                if let Some(user_styles) = window.state.borrow().user_styles.as_ref() {
+                    gtk::StyleContext::remove_provider_for_display(
+                        &window.app_window.display(),
+                        user_styles);
                 }
+                window.state.borrow_mut().user_styles = None;
+
+                // If the new page has styles, apply them.
+                if !def.styles.is_empty() {
+                    let user_styles = gtk::CssProvider::new();
+                    user_styles.load_from_data(def.styles.as_bytes());
+                    gtk::StyleContext::add_provider_for_display(
+                        &window.app_window.display(),
+                        &user_styles,
+                        gtk::STYLE_PROVIDER_PRIORITY_USER
+                    );
+                    window.state.borrow_mut().user_styles = Some(user_styles);
+                }
+
+                // Set the window title to that requested by the user, or the location if there was
+                // none.
+                window.app_window.set_title(Some(&def.title.unwrap_or(window.state.borrow().location.clone())));
+
+                // Construct the GTK builder from the UI definition.
+                let builder = gtk::Builder::new();
+                builder.add_from_string(&def.buildable)?;
+
+                // Find the "body" widget, and set it as the window's content.
+                match builder.object::<gtk::Widget>("body") {
+                    Some(body) /* once told me */ => window.content.set_child(Some(&body)),
+                    None => println!("No object found named 'body'"),
+                }
+
+                // Set up callbacks for any href attributes.
+                for (object_id, target) in &def.hrefs {
+                    let window = window.clone();
+                    let target = target.clone();
+                    // ???: what other widget types can be clicked?
+                    match builder.object::<gtk::Button>(object_id) {
+                        Some(widget) => {
+                            widget.connect_clicked(move |_| {
+                                window.clone().href(&target);
+                            });
+                        },
+                        None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
+                    }
+                }
+
+                window.state.borrow_mut().builder = builder;
+
+                // Run any defined scripts.
+                for script in &def.scripts {
+                    script.execute(&window);
+                }
+
+                // Clean up any old Lua registry values, such as now-unreferenced callbacks.
+                window.state.borrow().globals.lua.expire_registry_values();
+
+                Ok(())
+            };
+
+            if let Err(err) = r#do() {
+                println!("Navigation error: {}", err);
             }
-
-            self.state.borrow_mut().builder = builder;
-
-            // Run any defined scripts.
-            for script in &def.scripts {
-                script.execute(&self);
-            }
-
-            // Clean up any old Lua registry values, such as now-unreferenced callbacks.
-            self.state.borrow().globals.lua.expire_registry_values();
-
-            Ok(())
-        };
-
-        if let Err(err) = r#do(location) {
-            println!("Navigation error: {}", err);
-        }
+            Continue(false)
+        }));
     }
 
     fn href(self: Rc<Self>, target: &String) {
         let location = crate::util::absolutize_url(&self.state.borrow().location, target);
         self.address_bar.set_text(&location);
+        self.go(location);
+    }
+
+    pub fn reload(self: Rc<Self>) {
+        let location = self.state.borrow().location.clone();
         self.go(location);
     }
 

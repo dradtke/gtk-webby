@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Home"/>
+	<web:script type="lua">
+		function logout()
+			submit_form("POST", "/logout", {})
+		end
+
+		find_widget("logout"):connect("clicked", false, logout)
+	</web:script>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkLabel">
+				<property name="label">
+					You are now logged in as {{username}}!
+				</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkButton" id="logout">
+				<property name="label">Log Out</property>
+			</object>
+		</child>
+	</object>
+</interface>

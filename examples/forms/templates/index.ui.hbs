@@ -2,11 +2,15 @@
 <interface>
 	<web:page title="Index"/>
 	<web:script type="lua">
-		find_widget("submit"):connect("clicked", false, function()
+		function login()
 			local username = find_widget("username"):get_text()
 			local password = find_widget("password"):get_text()
 			submit_form("POST", "", {username=username, password=password})
-		end)
+		end
+
+		find_widget("submit"):connect("clicked", false, login)
+		find_widget("username"):connect("activate", false, login)
+		find_widget("password"):connect("activate", false, login)
 	</web:script>
 	<object class="GtkBox" id="body">
 		<property name="orientation">vertical</property>
