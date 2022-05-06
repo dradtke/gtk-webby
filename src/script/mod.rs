@@ -7,6 +7,7 @@ pub mod lua;
 pub const ALERT: &'static str = "alert";
 pub const FIND_WIDGET: &'static str = "find_widget";
 pub const SUBMIT_FORM: &'static str = "submit_form";
+pub const FETCH: &'static str = "fetch";
 
 // global vars
 pub const WINDOW: &'static str = "window";

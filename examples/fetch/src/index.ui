@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Index"/>
+	<web:script type="lua">
+		find_widget("get"):connect("clicked", false, function()
+			url = find_widget("url"):get_text()
+			fetch("GET", url, function(response)
+				print(string.format("status code: %d", response.status_code))
+				print(response.body)
+			end)
+		end)
+	</web:script>
+	<object class="GtkBox" id="body">
+		<property name="orientation">vertical</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkEntry" id="url">
+				<property name="placeholder-text">URL</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkButton" id="get">
+				<property name="label">GET</property>
+			</object>
+		</child>
+	</object>
+</interface>

@@ -83,6 +83,37 @@ fn global_functions(lua: &'static Lua, window: Rc<crate::window::Window>) -> Lua
         })?);
     }
 
+    {
+        let window = window.clone();
+        functions.insert(super::FETCH, lua.create_function(move |_, (method, url, callback): (String, String, LuaFunction)| {
+            if !url.contains("://") {
+                println!("fetch: URL is missing protocol: {}", url);
+                // TODO: send error to script?
+                return Ok(());
+            }
+
+            let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+                Ok(method) => method,
+                Err(err) => {
+                    return Err(LuaError::ExternalError(Arc::new(err)));
+                },
+            };
+
+            let http_client = &window.state.borrow().http_client;
+            let response = match http_client.request(method, url).send() {
+                Ok(response) => response,
+                Err(err) => {
+                    return Err(LuaError::ExternalError(Arc::new(err)));
+                },
+            };
+
+            if let Err(err) = callback.call::<_, ()>(Response::new(response)) {
+                println!("Failed to invoke fetch callback: {}", err);
+            }
+            Ok(())
+        })?);
+    }
+
     Ok(functions)
 }
 
@@ -273,6 +304,27 @@ impl LuaUserData for Widget {
             this.widget.set_css_classes(&v);
             Ok(())
         });
+    }
+}
+
+struct Response {
+    status_code: u16,
+    body: Option<String>,
+}
+
+impl Response {
+    fn new(r: reqwest::blocking::Response) -> Self {
+        Self{
+            status_code: r.status().as_u16(),
+            body: r.text().ok(),
+        }
+    }
+}
+
+impl LuaUserData for Response {
+    fn add_fields<'lua, F: LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_method_get("status_code", |_, this| Ok(this.status_code));
+        fields.add_field_method_get("body", |_, this| Ok(this.body.clone()));
     }
 }
 
