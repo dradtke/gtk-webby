@@ -9,4 +9,8 @@ fn index() -> String {
 #[launch]
 fn rocket() -> _ {
     rocket::build().mount("/", routes![index])
+        .configure(rocket::Config{
+            port: 8004,
+            ..Default::default()
+        })
 }
