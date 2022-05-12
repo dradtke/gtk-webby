@@ -51,7 +51,7 @@ impl Window {
 
         let app_window = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("Hello World")
+            .title("GTK Webby")
             .child(&vbox)
             .width_request(600)
             .height_request(400)
