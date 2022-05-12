@@ -1445,7 +1445,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webish"
+name = "webby"
 version = "0.1.0"
 dependencies = [
  "gtk4",

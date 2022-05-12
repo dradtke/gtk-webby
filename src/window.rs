@@ -10,6 +10,8 @@ pub struct Window {
     app_window: gtk::ApplicationWindow,
     address_bar: gtk::Entry,
     content: gtk::ScrolledWindow,
+    info_bar: gtk::InfoBar,
+    info_bar_text: gtk::Label,
     pub state: RefCell<State>,
 }
 
@@ -24,23 +26,28 @@ pub struct State {
 impl Window {
     pub fn new(app: &gtk::Application, globals: &'static crate::Globals) {
         let address_bar = gtk::Entry::new();
-        address_bar.set_text("http://localhost:8000"); // for testing
+        address_bar.set_property("placeholder-text", "Enter URL");
+        //address_bar.set_text("http://localhost:8000"); // for testing
 
         let content = gtk::ScrolledWindow::builder()
             .hexpand(true)
             .vexpand(true)
             .build();
 
-        content.set_child(Some(
-            &gtk::Label::builder()
-                .css_classes(vec!["placeholder".to_string()])
-                .label("Enter an address")
-                .build())
-        );
+        let info_bar = gtk::InfoBar::builder().revealed(false).show_close_button(true).build();
+        info_bar.connect_response(move |this, response| {
+            match response {
+                gtk::ResponseType::Close => this.set_revealed(false),
+                _ => (),
+            }
+        });
+        let info_bar_text = gtk::Label::new(None);
+        info_bar.add_child(&info_bar_text);
 
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
         vbox.append(&address_bar);
         vbox.append(&content);
+        vbox.append(&info_bar);
 
         let app_window = gtk::ApplicationWindow::builder()
             .application(app)
@@ -58,7 +65,7 @@ impl Window {
         let builder = gtk::Builder::new();
         let user_styles = None;
         let state = State{globals, location, http_client, builder, user_styles};
-        let window = Rc::new(Self{app_window, address_bar, content, state: RefCell::new(state)});
+        let window = Rc::new(Self{app_window, address_bar, content, info_bar, info_bar_text, state: RefCell::new(state)});
 
         crate::script::lua::init(window.clone());
 
@@ -70,6 +77,8 @@ impl Window {
     }
 
     fn go(self: Rc<Self>, location: String) {
+        self.info_bar.set_revealed(false);
+
         println!("Navigating to: {}", &location);
         let request = self.state.borrow().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
@@ -82,6 +91,7 @@ impl Window {
 
         receiver.attach(None, clone!(@strong self as window => move |response_result| {
             let window = window.clone();
+            let err_case_window = window.clone(); // better way to appease the borrow checker?
             let r#do = move || -> crate::Result<()> {
                 let response = response_result?;
                 window.content.set_child(gtk::Widget::NONE);
@@ -152,8 +162,13 @@ impl Window {
             };
 
             if let Err(err) = r#do() {
+                let err_text = err.to_string().replace(": ", ":\n");
+                err_case_window.info_bar_text.set_text(&err_text);
+                err_case_window.info_bar.set_message_type(gtk::MessageType::Error);
+                err_case_window.info_bar.set_revealed(true);
                 println!("Navigation error: {}", err);
             }
+
             Continue(false)
         }));
     }
