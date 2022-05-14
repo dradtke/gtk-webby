@@ -267,6 +267,23 @@ impl LuaUserData for Widget {
             }
         });
 
+        methods.add_method(super::SET_PROPERTY, |_, this, (property_name, property_value): (String, LuaValue)| {
+            let value = match lua_to_glib(&property_value) {
+                Some(value) => value,
+                None => {
+                    println!("Failed to convert property value to glib: {:?}", &property_value);
+                    return Err(LuaError::ExternalError(Arc::new(crate::error::Error::NoConversionError)));
+                },
+            };
+
+            if let Err(err) = this.widget.try_set_property_from_value(&property_name, &value) {
+                println!("Failed to get property '{}': {}", &property_name, err);
+                return Err(LuaError::ExternalError(Arc::new(err)));
+            }
+
+            Ok(())
+        });
+
         methods.add_method(super::GET_TEXT, |_, this, ()| {
             // TODO: work for more than Entry widgets?
             if let Ok(entry) = this.widget.clone().downcast::<gtk::Entry>() {

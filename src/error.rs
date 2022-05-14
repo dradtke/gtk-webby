@@ -8,6 +8,7 @@ pub enum Error {
     GlibError(glib::error::Error),
     XmlError(quick_xml::Error),
     FromUtf8Error(std::string::FromUtf8Error),
+    NoConversionError,
 }
 
 impl fmt::Display for Error {
@@ -18,9 +19,12 @@ impl fmt::Display for Error {
             Error::GlibError(err) => write!(f, "glib error: {}", err),
             Error::XmlError(err) => write!(f, "xml error: {}", err),
             Error::FromUtf8Error(err) => write!(f, "from utf8 error: {}", err),
+            Error::NoConversionError => write!(f, "no conversion error"),
         }
     }
 }
+
+impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {

@@ -15,6 +15,7 @@ pub const WINDOW: &'static str = "window";
 // widget functions
 pub const CONNECT: &'static str = "connect";
 pub const GET_PROPERTY: &'static str = "get_property";
+pub const SET_PROPERTY: &'static str = "set_property";
 pub const GET_TEXT: &'static str = "get_text";
 pub const SET_SENSITIVE: &'static str = "set_sensitive";
 pub const SET_LABEL: &'static str = "set_label";
