@@ -3,15 +3,15 @@
 	<web:page title="Index"/>
 	<web:style>
 		#body {
-			background: green;
+			font-size: x-large;
 		}
 
 		.red {
-			color: red;
+			color: shade(red, 1.6);
 		}
 
 		.blue {
-			color: blue;
+			color: shade(blue, 1.6);
 		}
 	</web:style>
 	<object class="GtkBox" id="body">
@@ -27,19 +27,7 @@
 		<child>
 			<object class="GtkLabel">
 				<style><class name="blue"/></style>
-				<property name="label">and this one is blue</property>
-			</object>
-		</child>
-		<child>
-			<object class="GtkLabel">
-				<style><class name="red"/></style>
-				<property name="label">Back to red!</property>
-			</object>
-		</child>
-		<child>
-			<object class="GtkLabel">
-				<style><class name="blue"/></style>
-				<property name="label">Back to blue!</property>
+				<property name="label">and this one is blue!</property>
 			</object>
 		</child>
 	</object>

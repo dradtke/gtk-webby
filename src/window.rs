@@ -137,11 +137,11 @@ impl Window {
                 for (object_id, target) in &def.hrefs {
                     let window = window.clone();
                     let target = target.clone();
-                    // ???: what other widget types can be clicked?
-                    match builder.object::<gtk::Button>(object_id) {
+                    match builder.object::<gtk::Widget>(object_id) {
                         Some(widget) => {
-                            widget.connect_clicked(move |_| {
+                            widget.connect_local("clicked", false, move |_| {
                                 window.clone().href(&target);
+                                None
                             });
                         },
                         None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
