@@ -39,6 +39,8 @@ When running the app, use `Ctrl-Shift-D` to open up the GTK inspector.
 
 # Lua Scripting Reference
 
+Webby supports Lua scripting by embedding code within a `<web:script type="lua">` tag.
+
 ## Global Functions
 
 | Name | Description |
