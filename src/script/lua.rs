@@ -3,6 +3,7 @@ use mlua::prelude::*;
 
 use gtk::glib;
 use glib::signal::SignalHandlerId;
+use glib::{Continue, MainContext, PRIORITY_DEFAULT};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -87,8 +88,9 @@ fn global_functions(lua: &'static Lua, window: Rc<crate::window::Window>) -> Lua
         let window = window.clone();
         functions.insert(super::FETCH, lua.create_function(move |_, (method, url, callback): (String, String, LuaFunction)| {
             if !url.contains("://") {
-                println!("fetch: URL is missing protocol: {}", url);
-                // TODO: send error to script?
+                if let Err(err) = callback.call::<_, ()>((format!("URL is missing protocol: {}", url), LuaValue::Nil)) {
+                    println!("Failed to invoke fetch callback: {}", err);
+                }
                 return Ok(());
             }
 
@@ -99,17 +101,34 @@ fn global_functions(lua: &'static Lua, window: Rc<crate::window::Window>) -> Lua
                 },
             };
 
-            let http_client = &window.state.borrow().http_client;
-            let response = match http_client.request(method, url).send() {
-                Ok(response) => response,
-                Err(err) => {
-                    return Err(LuaError::ExternalError(Arc::new(err)));
-                },
-            };
+            let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
 
-            if let Err(err) = callback.call::<_, ()>(Response::new(response)) {
-                println!("Failed to invoke fetch callback: {}", err);
-            }
+            let request = window.state.borrow().http_client.request(method, url);
+            std::thread::spawn(move || {
+                let response_result = request.send();
+                if let Err(err) = sender.send(response_result) {
+                    println!("fetch: Failed to send response on channel: {}", err);
+                }
+            });
+
+            let callback_key = lua.create_registry_value(callback).expect("Failed to create Lua registry value");
+            receiver.attach(None, move |response_result| {
+                let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
+                match response_result {
+                    Ok(response) => {
+                        if let Err(err) = f.call::<_, ()>((LuaValue::Nil, Response::new(response))) {
+                            println!("Failed to invoke fetch callback: {}", err);
+                        }
+                    },
+                    Err(err) => {
+                        if let Err(err) = f.call::<_, ()>((LuaError::ExternalError(Arc::new(err)), LuaValue::Nil)) {
+                            println!("Failed to invoke fetch callback: {}", err);
+                        }
+                    },
+                }
+                // lua.remove_registry_value(callback_key);
+                Continue(false)
+            });
             Ok(())
         })?);
     }
@@ -178,9 +197,6 @@ fn lua_to_glib(value: &LuaValue) -> Option<glib::Value> {
 struct Widget {
     lua: &'static Lua,
     widget: gtk::Widget,
-    // ???: Do Lua registry keys need to be manually deregistered, or signals manually
-    // disconnected, in order to prevent memory leaks or weird behavior?
-    registry_keys: Vec<Rc<LuaRegistryKey>>,
     signal_ids: Vec<(gtk::Widget, SignalHandlerId)>,
 }
 
@@ -190,7 +206,6 @@ impl Widget {
             lua,
             widget,
             signal_ids: Vec::new(),
-            registry_keys: Vec::new(),
         }
     }
 }
@@ -200,10 +215,7 @@ impl LuaUserData for Widget {
         methods.add_method_mut(super::CONNECT, |_, this, (signal, after, callback): (String, bool, LuaFunction)| {
             let lua: &'static Lua = this.lua;
 
-            let callback_key = Rc::new(lua.create_registry_value(callback).expect("Failed to create Lua registry value"));
-            let weak_callback_ref = Rc::downgrade(&callback_key);
-            this.registry_keys.push(callback_key);
-
+            let callback_key = lua.create_registry_value(callback).expect("Failed to create Lua registry value");
             let signal_id = this.widget.connect_local(&signal, after, move |values| {
                 /*
                 let lua_values = match values.iter().map(|v| glib_to_lua(lua, v)).collect::<Option<Vec<LuaValue>>>() {
@@ -214,14 +226,6 @@ impl LuaUserData for Widget {
                     },
                 };
                 */
-
-                let key = match weak_callback_ref.upgrade() {
-                    Some(key) => key,
-                    None => {
-                        println!("Callback missing from Lua registry");
-                        return None;
-                    },
-                };
 
                 // NOTE: This is very hacky, but when passing the widget reference into the
                 // callback arguments directly, it doesn't seem to have any methods registered.
@@ -234,7 +238,7 @@ impl LuaUserData for Widget {
                     }
                 }
 
-                let f: LuaFunction = lua.registry_value(&key).unwrap();
+                let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
                 let retvals = match f.call::<_, LuaMultiValue>(/*lua_values*/()) {
                     Ok(retval) => retval,
                     Err(err) => {

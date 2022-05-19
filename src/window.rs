@@ -80,6 +80,7 @@ impl Window {
         self.info_bar.set_revealed(false);
 
         println!("Navigating to: {}", &location);
+        // TODO: show a "loading" widget
         let request = self.state.borrow().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {

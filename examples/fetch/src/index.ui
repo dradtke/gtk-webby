@@ -4,9 +4,13 @@
 	<web:script type="lua">
 		find_widget("get"):connect("clicked", false, function()
 			url = find_widget("url"):get_text()
-			fetch("GET", url, function(response)
-				print(string.format("status code: %d", response.status_code))
-				print(response.body)
+			fetch("GET", url, function(err, response)
+				if err then
+					print(string.format("fetch error: %s", err))
+				else
+					print(string.format("status code: %d", response.status_code))
+					print(response.body)
+				end
 			end)
 		end)
 	</web:script>
