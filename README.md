@@ -3,6 +3,9 @@
 Webby is a proof-of-concept application that behaves like a browser, but one that renders native GTK
 applications rather than websites.
 
+For additional information, check out the blog post:
+https://damienradtke.com/post/building-gtk-applications-like-websites/
+
 ## Running
 
 To run, first make sure you have the following installed:
