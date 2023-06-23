@@ -12,7 +12,10 @@ const HEADER_VERSION_MICRO: &'static str = "X-GTK-Version-Micro";
 pub struct Window {
     #[allow(dead_code)]
     app_window: gtk::ApplicationWindow,
-    address_bar: gtk::Entry,
+    back_button: gtk::Button,
+    forward_button: gtk::Button,
+    refresh_button: gtk::Button,
+    address_entry: gtk::Entry,
     content: gtk::ScrolledWindow,
     info_bar: gtk::InfoBar,
     info_bar_text: gtk::Label,
@@ -29,9 +32,21 @@ pub struct State {
 
 impl Window {
     pub fn new(app: &gtk::Application, globals: &'static crate::Globals) {
-        let address_bar = gtk::Entry::new();
-        address_bar.set_property("placeholder-text", "Enter URL");
-        //address_bar.set_text("http://localhost:8000"); // for testing
+        // Icon names are documented here: https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
+        let back_button = gtk::Button::from_icon_name("go-previous");
+        let forward_button = gtk::Button::from_icon_name("go-next");
+        let refresh_button = gtk::Button::from_icon_name("view-refresh");
+
+        let address_entry = gtk::Entry::new();
+        address_entry.set_property("placeholder-text", "Enter URL");
+        address_entry.set_hexpand(true);
+        //address_entry.set_text("http://localhost:8000"); // for testing
+
+        let top_bar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        top_bar.append(&back_button);
+        top_bar.append(&forward_button);
+        top_bar.append(&refresh_button);
+        top_bar.append(&address_entry);
 
         let content = gtk::ScrolledWindow::builder()
             .hexpand(true)
@@ -49,7 +64,7 @@ impl Window {
         info_bar.add_child(&info_bar_text);
 
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        vbox.append(&address_bar);
+        vbox.append(&top_bar);
         vbox.append(&content);
         vbox.append(&info_bar);
 
@@ -69,13 +84,35 @@ impl Window {
         let builder = gtk::Builder::new();
         let user_styles = None;
         let state = State{globals, location, http_client, builder, user_styles};
-        let window = Rc::new(Self{app_window, address_bar, content, info_bar, info_bar_text, state: RefCell::new(state)});
+        let window = Rc::new(Self{
+            app_window,
+            back_button,
+            forward_button,
+            refresh_button,
+            address_entry,
+            content,
+            info_bar,
+            info_bar_text,
+            state: RefCell::new(state),
+        });
 
         crate::script::lua::init(window.clone());
 
-        window.clone().address_bar.connect_activate(move |_| {
+        window.clone().back_button.connect_clicked(move |_| {
+            eprintln!("TODO: go back");
+        });
+
+        window.clone().forward_button.connect_clicked(move |_| {
+            eprintln!("TODO: go forward");
+        });
+
+        window.clone().refresh_button.connect_clicked(move |_| {
+            eprintln!("TODO: refresh");
+        });
+
+        window.clone().address_entry.connect_activate(move |_| {
             let window = window.clone();
-            let location = window.address_bar.text().to_string();
+            let location = window.address_entry.text().to_string();
             window.go(location);
         });
     }
@@ -184,7 +221,7 @@ impl Window {
 
     fn href(self: Rc<Self>, target: &String) {
         let location = crate::util::absolutize_url(&self.state.borrow().location, target);
-        self.address_bar.set_text(&location);
+        self.address_entry.set_text(&location);
         self.go(location);
     }
 
