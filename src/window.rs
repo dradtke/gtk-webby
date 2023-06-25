@@ -125,7 +125,8 @@ impl Window {
         let request = self.state.borrow().http_client.get(&location)
             .header(HEADER_VERSION_MAJOR, gtk::major_version())
             .header(HEADER_VERSION_MINOR, gtk::minor_version())
-            .header(HEADER_VERSION_MICRO, gtk::micro_version());
+            .header(HEADER_VERSION_MICRO, gtk::micro_version())
+            .header("User-Agent", "GTK Webby");
 
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {
