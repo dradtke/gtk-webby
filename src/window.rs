@@ -74,6 +74,7 @@ impl Window {
             .child(&vbox)
             .width_request(600)
             .height_request(400)
+            .show_menubar(true)
             .build();
 
         app_window.present();
