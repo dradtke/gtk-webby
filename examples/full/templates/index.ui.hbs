@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+	<web:page title="Home"/>
+	<object class="GtkBox" id="body">
+		<property name="orientation">horizontal</property>
+		<property name="halign">start</property>
+		<child>
+			<object class="GtkStackSidebar" id="sidebar">
+				<property name="stack">stack</property>
+			</object>
+		</child>
+		<child>
+			<object class="GtkStack" id="stack">
+				<child>
+					<object class="GtkStackPage">
+						<property name="name">page1</property>
+						<property name="title">Page One</property>
+						<property name="child">
+							<object class="GtkLabel">
+								<property name="label">Here is the first page.</property>
+							</object>
+						</property>
+					</object>
+				</child>
+				<child>
+					<object class="GtkStackPage">
+						<property name="name">page2</property>
+						<property name="title">Page Two</property>
+						<property name="child">
+							<object class="GtkLabel">
+								<property name="label">Here is the second page.</property>
+							</object>
+						</property>
+					</object>
+				</child>
+				<child>
+					<object class="GtkStackPage">
+						<property name="name">page3</property>
+						<property name="title">Page Three</property>
+						<property name="child">
+							<object class="GtkLabel">
+								<property name="label">Here is the third page.</property>
+							</object>
+						</property>
+					</object>
+				</child>
+			</object>
+		</child>
+	</object>
+</interface>
+
+<!--
+	vim: filetype=xml:
+-->
