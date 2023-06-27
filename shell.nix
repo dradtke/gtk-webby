@@ -7,6 +7,10 @@ pkgs.mkShell {
 		pkgs.lua5_4
 		pkgs.rustc
 		pkgs.cargo
+		# For SSL support
+		pkgs.darwin.apple_sdk.frameworks.Security
+		pkgs.pkgconfig
+		pkgs.openssl
 	];
 	RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 }

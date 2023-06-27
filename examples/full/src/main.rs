@@ -1,5 +1,6 @@
 #[macro_use] extern crate rocket;
 use rocket_dyn_templates::Template;
+use rocket::config::TlsConfig;
 use rocket::serde::Serialize;
 
 #[derive(Serialize)]
@@ -19,13 +20,13 @@ fn index() -> Template {
 
 #[launch]
 fn rocket() -> _ {
-    let mut config = rocket::Config::default();
-    config.port = 8008;
+    let tls_config = TlsConfig::from_paths("/ssl/certs.pem", "/ssl/key.pem");
 
     rocket::build().mount("/", routes![index])
         .attach(Template::fairing())
         .configure(rocket::Config{
             port: 8005,
+            //tls: Some(tls_config),
             ..Default::default()
         })
 }

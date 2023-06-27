@@ -78,6 +78,7 @@ impl Window {
         let location = String::from("");
         let http_client = reqwest::blocking::Client::builder()
             .cookie_store(true)
+            .user_agent("GTK Webby")
             .default_headers(crate::headers::request_headers())
             .build()
             .expect("failed to build http client");
