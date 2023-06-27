@@ -1,9 +1,20 @@
 #[macro_use] extern crate rocket;
 use rocket_dyn_templates::Template;
+use rocket::serde::Serialize;
+
+#[derive(Serialize)]
+struct PageData {
+    posts: Vec<String>,
+}
 
 #[get("/")]
 fn index() -> Template {
-    Template::render("index", ())
+    Template::render("index", PageData{
+        posts: vec![
+            String::from("This is my first post."),
+            String::from("This is my second post."),
+        ],
+    })
 }
 
 #[launch]

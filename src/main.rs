@@ -5,6 +5,7 @@ use mlua::prelude::*;
 
 mod actions;
 mod error;
+mod headers;
 mod script;
 mod ui;
 mod util;

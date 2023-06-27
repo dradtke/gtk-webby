@@ -5,10 +5,6 @@ use gtk::glib;
 use gtk::prelude::*;
 use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
 
-const HEADER_VERSION_MAJOR: &'static str = "X-GTK-Version-Major";
-const HEADER_VERSION_MINOR: &'static str = "X-GTK-Version-Minor";
-const HEADER_VERSION_MICRO: &'static str = "X-GTK-Version-Micro";
-
 pub struct Window {
     #[allow(dead_code)]
     app_window: gtk::ApplicationWindow,
@@ -80,7 +76,11 @@ impl Window {
         app_window.present();
 
         let location = String::from("");
-        let http_client = reqwest::blocking::Client::builder().cookie_store(true).build().expect("failed to build http client");
+        let http_client = reqwest::blocking::Client::builder()
+            .cookie_store(true)
+            .default_headers(crate::headers::request_headers())
+            .build()
+            .expect("failed to build http client");
 
         let builder = gtk::Builder::new();
         let user_styles = None;
@@ -127,12 +127,7 @@ impl Window {
 
         println!("Navigating to: {}", &location);
         // TODO: show a "loading" widget
-        let request = self.state.borrow().http_client.get(&location)
-            .header(HEADER_VERSION_MAJOR, gtk::major_version())
-            .header(HEADER_VERSION_MINOR, gtk::minor_version())
-            .header(HEADER_VERSION_MICRO, gtk::micro_version())
-            .header("User-Agent", "GTK Webby");
-
+        let request = self.state.borrow().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {
             let response_result = request.send();

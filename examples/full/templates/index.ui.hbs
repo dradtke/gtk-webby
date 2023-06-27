@@ -13,33 +13,42 @@
 			<object class="GtkStack" id="stack">
 				<child>
 					<object class="GtkStackPage">
-						<property name="name">page1</property>
-						<property name="title">Page One</property>
+						<property name="name">home</property>
+						<property name="title">Home</property>
 						<property name="child">
 							<object class="GtkLabel">
-								<property name="label">Here is the first page.</property>
+								<property name="label">Welcome to my home page!</property>
 							</object>
 						</property>
 					</object>
 				</child>
+
 				<child>
 					<object class="GtkStackPage">
-						<property name="name">page2</property>
-						<property name="title">Page Two</property>
+						<property name="name">blog</property>
+						<property name="title">Blog</property>
 						<property name="child">
-							<object class="GtkLabel">
-								<property name="label">Here is the second page.</property>
+							<object class="GtkBox">
+								<property name="orientation">vertical</property>
+								{{#each posts}}
+								<child>
+									<object class="GtkLabel">
+										<property name="label">{{this}}</property>
+									</object>
+								</child>
+								#{{/each}}
 							</object>
 						</property>
 					</object>
 				</child>
+
 				<child>
 					<object class="GtkStackPage">
-						<property name="name">page3</property>
-						<property name="title">Page Three</property>
+						<property name="name">about</property>
+						<property name="title">About Me</property>
 						<property name="child">
 							<object class="GtkLabel">
-								<property name="label">Here is the third page.</property>
+								<property name="label">Here is more information about me.</property>
 							</object>
 						</property>
 					</object>
