@@ -1,7 +1,10 @@
+use clap::Parser;
 use gtk::gdk;
 use gtk::gio;
 use gtk::prelude::*;
 use mlua::prelude::*;
+use std::fs::File;
+use std::io::Read;
 
 mod actions;
 mod error;
@@ -11,15 +14,36 @@ mod ui;
 mod util;
 mod window;
 
+#[derive(Parser, Debug)]
+struct Args {
+    /// List of root certificates to support
+    #[arg(short, long)]
+    root_certs: Vec<String>,
+}
+
 type Result<T> = core::result::Result<T, error::Error>;
 
 pub struct Globals {
+    root_certs: Vec<reqwest::tls::Certificate>,
     lua: Lua
 }
 
+// TODO: return a result type
+fn load_cert(path: &str) -> reqwest::tls::Certificate {
+    println!("Loading root cert: {}", path);
+    let mut buf = Vec::new();
+    File::open(path).unwrap().read_to_end(&mut buf).unwrap();
+    reqwest::Certificate::from_pem(&buf).unwrap()
+}
+
 fn main() {
+    // TODO: need to figure out how to remove arguments from the global list after they're parsed.
+    // I think arguments here are still being passed to GTK afterwards
+    let args = Args::parse();
+
     // glib callbacks need referenced values to be 'static.
     let globals = Box::leak(Box::new(Globals{
+        root_certs: args.root_certs.iter().map(|path| load_cert(path)).collect(),
         lua: Lua::new()
     }));
 
@@ -44,6 +68,7 @@ fn main() {
 
         app.set_menubar(Some(&build_menu()));
     });
+
     app.connect_activate(|app| {
         window::Window::new(app, globals);
     });

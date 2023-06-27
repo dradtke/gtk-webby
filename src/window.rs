@@ -76,10 +76,16 @@ impl Window {
         app_window.present();
 
         let location = String::from("");
-        let http_client = reqwest::blocking::Client::builder()
+        let mut http_client_builder = reqwest::blocking::Client::builder()
             .cookie_store(true)
             .user_agent("GTK Webby")
-            .default_headers(crate::headers::request_headers())
+            .default_headers(crate::headers::request_headers());
+
+        for cert in &globals.root_certs {
+            http_client_builder = http_client_builder.add_root_certificate(cert.clone());
+        }
+
+        let http_client = http_client_builder
             .build()
             .expect("failed to build http client");
 

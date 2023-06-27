@@ -20,13 +20,13 @@ fn index() -> Template {
 
 #[launch]
 fn rocket() -> _ {
-    let tls_config = TlsConfig::from_paths("/ssl/certs.pem", "/ssl/key.pem");
+    let tls_config = TlsConfig::from_paths("localhost.crt", "localhost.key");
 
     rocket::build().mount("/", routes![index])
         .attach(Template::fairing())
         .configure(rocket::Config{
             port: 8005,
-            //tls: Some(tls_config),
+            tls: Some(tls_config),
             ..Default::default()
         })
 }
