@@ -99,23 +99,27 @@ impl Window {
 
         crate::script::lua::init(window.clone());
 
-        window.clone().back_button.connect_clicked(move |_| {
+        window.back_button.connect_clicked(clone!(@weak window => move |_| {
             eprintln!("TODO: go back");
-        });
+        }));
 
-        window.clone().forward_button.connect_clicked(move |_| {
+        window.forward_button.connect_clicked(clone!(@weak window => move |_| {
             eprintln!("TODO: go forward");
-        });
+        }));
 
-        window.clone().refresh_button.connect_clicked(move |_| {
-            eprintln!("TODO: refresh");
-        });
+        window.refresh_button.connect_clicked(clone!(@weak window => move |_| {
+            window.refresh();
+        }));
 
-        window.clone().address_entry.connect_activate(move |_| {
-            let window = window.clone();
+        window.address_entry.connect_activate(clone!(@weak window => move |_| {
             let location = window.address_entry.text().to_string();
             window.go(location);
-        });
+        }));
+    }
+
+    fn refresh(self: Rc<Self>) {
+        let location = self.state.borrow().location.clone();
+        self.go(location);
     }
 
     fn go(self: Rc<Self>, location: String) {
