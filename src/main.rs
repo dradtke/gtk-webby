@@ -1,10 +1,13 @@
-use clap::Parser;
 use gtk::gdk;
 use gtk::gio;
+use gtk::glib;
+use glib::clone;
 use gtk::prelude::*;
 use mlua::prelude::*;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
+use std::rc::Rc;
 
 mod actions;
 mod error;
@@ -13,13 +16,6 @@ mod script;
 mod ui;
 mod util;
 mod window;
-
-#[derive(Parser, Debug)]
-struct Args {
-    /// List of root certificates to support
-    #[arg(short, long)]
-    root_certs: Vec<String>,
-}
 
 type Result<T> = core::result::Result<T, error::Error>;
 
@@ -37,16 +33,6 @@ fn load_cert(path: &str) -> reqwest::tls::Certificate {
 }
 
 fn main() {
-    // TODO: need to figure out how to remove arguments from the global list after they're parsed.
-    // I think arguments here are still being passed to GTK afterwards
-    let args = Args::parse();
-
-    // glib callbacks need referenced values to be 'static.
-    let globals = Box::leak(Box::new(Globals{
-        root_certs: args.root_certs.iter().map(|path| load_cert(path)).collect(),
-        lua: Lua::new()
-    }));
-
     let app = gtk::Application::builder()
         .application_id("com.damienradtke.webby")
         // For some reason, this results in an assertion error that the application isn't
@@ -54,7 +40,32 @@ fn main() {
         //.menubar(&build_menu())
         .build();
 
+    app.add_main_option(
+        "root-certificate",
+        glib::Char::from(b'r'),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::StringArray, // FilenameArray results in strings with null bytes, for some rason
+        "Add a root certificate",
+        None
+    );
+
     define_actions(&app);
+
+    let root_certs = Rc::new(RefCell::new(vec![]));
+
+    app.connect_handle_local_options(clone!(@strong root_certs => move |_app, dict| {
+        match dict.lookup::<Vec<String>>("root-certificate") {
+            Ok(Some(paths)) => {
+                for path in paths {
+                    let cert = load_cert(&path);
+                    root_certs.borrow_mut().push(cert);
+                }
+            },
+            Ok(None) => (),
+            Err(err) => eprintln!("{}", err),
+        }
+        -1
+    }));
 
     app.connect_startup(|app| {
         let provider = gtk::CssProvider::new();
@@ -69,7 +80,12 @@ fn main() {
         app.set_menubar(Some(&build_menu()));
     });
 
-    app.connect_activate(|app| {
+    app.connect_activate(move |app| {
+        // glib callbacks need referenced values to be 'static.
+        let globals = Box::leak(Box::new(Globals{
+            root_certs: root_certs.borrow().clone(),
+            lua: Lua::new()
+        }));
         window::Window::new(app, globals);
     });
 
