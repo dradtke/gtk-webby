@@ -9,12 +9,12 @@ pkgs.mkShell {
 		pkgs.cargo
 	] ++ (
 		# SSL support is platform-specific
-		if builtins.currentSystem == "x86_64-darwin" then [
+		if pkgs.lib.strings.hasSuffix "-darwin" builtins.currentSystem then [
 			pkgs.darwin.apple_sdk.frameworks.Security
 			pkgs.darwin.apple_sdk.frameworks.CoreServices
 			pkgs.openssl
 		]
-		else if builtins.currentSystem == "x86_64-linux" then [
+		else if pkgs.lib.strings.hasSuffix "-linux" builtins.currentSystem then [
 			pkgs.openssl
 		]
 		else []

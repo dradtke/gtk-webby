@@ -24,12 +24,10 @@ pub struct Globals {
     lua: Lua
 }
 
-// TODO: return a result type
-fn load_cert(path: &str) -> reqwest::tls::Certificate {
-    println!("Loading root cert: {}", path);
+fn load_cert(path: &str) -> anyhow::Result<reqwest::tls::Certificate> {
     let mut buf = Vec::new();
-    File::open(path).unwrap().read_to_end(&mut buf).unwrap();
-    reqwest::Certificate::from_pem(&buf).unwrap()
+    File::open(path)?.read_to_end(&mut buf)?;
+    Ok(reqwest::Certificate::from_pem(&buf)?)
 }
 
 fn main() {
@@ -41,12 +39,12 @@ fn main() {
         .build();
 
     app.add_main_option(
-        "root-certificate",
-        glib::Char::from(b'r'),
+        "add-root-cert",
+        glib::Char::from(0),
         glib::OptionFlags::NONE,
-        glib::OptionArg::StringArray, // FilenameArray results in strings with null bytes, for some rason
-        "Add a root certificate",
-        None
+        glib::OptionArg::StringArray, // FilenameArray results in strings with null bytes, for some reason
+        "Add a root certificate. Can be specified multiple times",
+        Some("path/to/cert.pem"),
     );
 
     define_actions(&app);
@@ -54,11 +52,19 @@ fn main() {
     let root_certs = Rc::new(RefCell::new(vec![]));
 
     app.connect_handle_local_options(clone!(@strong root_certs => move |_app, dict| {
-        match dict.lookup::<Vec<String>>("root-certificate") {
+        match dict.lookup::<Vec<String>>("add-root-cert") {
             Ok(Some(paths)) => {
                 for path in paths {
-                    let cert = load_cert(&path);
-                    root_certs.borrow_mut().push(cert);
+                    match load_cert(&path) {
+                        Ok(cert) => {
+                            println!("Loaded root cert {}", &path);
+                            root_certs.borrow_mut().push(cert);
+                        },
+                        Err(err) => {
+                            // TODO: use glib's logging facilities?
+                            println!("Failed to load root cert {}: {}", &path, &err);
+                        },
+                    }
                 }
             },
             Ok(None) => (),
