@@ -11,6 +11,7 @@ pub struct Window {
     back_button: gtk::Button,
     forward_button: gtk::Button,
     refresh_button: gtk::Button,
+    bookmark_button: gtk::Button,
     address_entry: gtk::Entry,
     content: gtk::ScrolledWindow,
     info_bar: gtk::InfoBar,
@@ -32,6 +33,7 @@ impl Window {
         let back_button = gtk::Button::from_icon_name("go-previous");
         let forward_button = gtk::Button::from_icon_name("go-next");
         let refresh_button = gtk::Button::from_icon_name("view-refresh");
+        let bookmark_button = gtk::Button::from_icon_name("bookmark-new"); // no idea where this one is documented
 
         let address_entry = gtk::Entry::new();
         address_entry.set_property("placeholder-text", "Enter URL");
@@ -43,6 +45,7 @@ impl Window {
         top_bar.append(&forward_button);
         top_bar.append(&refresh_button);
         top_bar.append(&address_entry);
+        top_bar.append(&bookmark_button);
 
         let content = gtk::ScrolledWindow::builder()
             .hexpand(true)
@@ -68,8 +71,8 @@ impl Window {
             .application(app)
             .title("Webby")
             .child(&vbox)
-            .width_request(600)
-            .height_request(400)
+            .width_request(800)
+            .height_request(600)
             .show_menubar(true)
             .build();
 
@@ -97,6 +100,7 @@ impl Window {
             back_button,
             forward_button,
             refresh_button,
+            bookmark_button,
             address_entry,
             content,
             info_bar,
@@ -116,6 +120,10 @@ impl Window {
 
         window.refresh_button.connect_clicked(clone!(@weak window => move |_| {
             window.refresh();
+        }));
+
+        window.bookmark_button.connect_clicked(clone!(@weak window => move |_| {
+            eprintln!("TODO: add bookmark");
         }));
 
         window.address_entry.connect_activate(clone!(@weak window => move |_| {

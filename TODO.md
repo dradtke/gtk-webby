@@ -1,10 +1,11 @@
-- Put address bar into header?
 - Redirection support (and other HTTP headers)
 - Creating/removing widgets dynamically in scripting
 - (Maybe) Pass "this" parameter into callbacks (already might be passed?)
-- User styling
 - Remote loading of scripts and styles via src attribute
 - Cloning a "template" widget
 - ListModel/TreeModel support?
-- Forms
-- Cookies
+- Bookmarks
+- Cookie management
+
+Maybe:
+- Put address bar into header?
