@@ -1,8 +1,9 @@
 #[macro_use] extern crate rocket;
+use rocket::http::ContentType;
 
 #[get("/")]
-fn index() -> &'static str {
-    return r#"
+fn index() -> (ContentType, &'static str) {
+    (ContentType::new("application", "gtk"), r#"
         <?xml version="1.0" encoding="UTF-8"?>
         <interface>
             <object class="GtkBox" id="body">
@@ -15,7 +16,7 @@ fn index() -> &'static str {
                 </child>
             </object>
         </interface>
-    "#;
+    "#)
 }
 
 #[launch]

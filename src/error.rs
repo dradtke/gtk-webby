@@ -9,6 +9,10 @@ pub enum Error {
     XmlError(quick_xml::Error),
     FromUtf8Error(std::string::FromUtf8Error),
     NoConversionError,
+    HeaderToStrError(reqwest::header::ToStrError),
+    MimeParseError(mime::FromStrError),
+    NoContentTypeError,
+    UnsupportedContentTypeError(String),
 }
 
 impl fmt::Display for Error {
@@ -20,6 +24,10 @@ impl fmt::Display for Error {
             Error::XmlError(err) => write!(f, "xml error: {}", err),
             Error::FromUtf8Error(err) => write!(f, "from utf8 error: {}", err),
             Error::NoConversionError => write!(f, "no conversion error"),
+            Error::HeaderToStrError(err) => write!(f, "failed to convert header value to string: {}", err),
+            Error::MimeParseError(err) => write!(f, "failed to parse mime type: {}", err),
+            Error::NoContentTypeError => write!(f, "no Content-Type header provided by server"),
+            Error::UnsupportedContentTypeError(content_type) => write!(f, "unsupported Content-Type: {}", content_type),
         }
     }
 }
@@ -53,5 +61,17 @@ impl From<quick_xml::Error> for Error {
 impl From<std::string::FromUtf8Error> for Error {
     fn from(err: std::string::FromUtf8Error) -> Error {
         Error::FromUtf8Error(err)
+    }
+}
+
+impl From<reqwest::header::ToStrError> for Error {
+    fn from(err: reqwest::header::ToStrError) -> Error {
+        Error::HeaderToStrError(err)
+    }
+}
+
+impl From<mime::FromStrError> for Error {
+    fn from(err: mime::FromStrError) -> Error {
+        Error::MimeParseError(err)
     }
 }

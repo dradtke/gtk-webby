@@ -1,15 +1,14 @@
 #[macro_use] extern crate rocket;
+use rocket::http::ContentType;
 
 #[get("/")]
-fn index() -> String {
-    // TODO: define Content-Type
-    std::fs::read_to_string("src/index.ui").unwrap()
+fn index() -> (ContentType, String) {
+    (ContentType::new("application", "gtk"), std::fs::read_to_string("src/index.ui").unwrap())
 }
 
 #[get("/about")]
-fn about() -> String {
-    // TODO: define Content-Type
-    std::fs::read_to_string("src/about.ui").unwrap()
+fn about() -> (ContentType, String) {
+    (ContentType::new("application", "gtk"), std::fs::read_to_string("src/about.ui").unwrap())
 }
 
 #[launch]

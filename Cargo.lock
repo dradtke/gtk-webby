@@ -1663,6 +1663,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gtk4",
+ "mime",
  "mlua",
  "quick-xml",
  "reqwest",

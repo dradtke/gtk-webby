@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::io::Read;
 use std::rc::Rc;
 
 use gtk::glib;
@@ -16,6 +17,7 @@ pub struct Window {
     content: gtk::ScrolledWindow,
     info_bar: gtk::InfoBar,
     info_bar_text: gtk::Label,
+    status_label: gtk::Label,
     pub state: RefCell<State>,
 }
 
@@ -62,10 +64,13 @@ impl Window {
         let info_bar_text = gtk::Label::new(None);
         info_bar.add_child(&info_bar_text);
 
+        let status_label = gtk::Label::new(None);
+
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
         vbox.append(&top_bar);
         vbox.append(&content);
         vbox.append(&info_bar);
+        vbox.append(&status_label);
 
         let app_window = gtk::ApplicationWindow::builder()
             .application(app)
@@ -105,6 +110,7 @@ impl Window {
             content,
             info_bar,
             info_bar_text,
+            status_label,
             state: RefCell::new(state),
         });
 
@@ -140,8 +146,8 @@ impl Window {
     fn go(self: Rc<Self>, location: String) {
         self.info_bar.set_revealed(false);
 
-        println!("Navigating to: {}", &location);
-        // TODO: show a "loading" widget
+        //println!("Navigating to: {}", &location);
+        self.status_label.set_label(&format!("Loading {}...", &location));
         let request = self.state.borrow().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {
@@ -151,88 +157,107 @@ impl Window {
             }
         });
 
-        receiver.attach(None, clone!(@strong self as window => move |response_result| {
-            let window = window.clone();
-            let err_case_window = window.clone(); // better way to appease the borrow checker?
-            let r#do = move || -> crate::Result<()> {
+        receiver.attach(None, clone!(@weak self as window => @default-return Continue(false), move |response_result| {
+            let r#do = || -> crate::Result<()> {
                 let response = response_result?;
                 window.content.set_child(gtk::Widget::NONE);
-
                 window.state.borrow_mut().location = response.url().to_string();
-                let def = crate::ui::Definition::new(response)?;
 
-                // Remove existing user-requested CSS styling, if there is any.
-                if let Some(user_styles) = window.state.borrow().user_styles.as_ref() {
-                    gtk::StyleContext::remove_provider_for_display(
-                        &window.app_window.display(),
-                        user_styles);
+                let mime_type: mime::Mime = match response.headers().get(reqwest::header::CONTENT_TYPE) {
+                    Some(content_type) => content_type.to_str()?.parse()?,
+                    None => return Err(crate::error::Error::NoContentTypeError),
+                };
+
+                match mime_type.type_() {
+                    mime::TEXT => window.clone().render_text(response),
+                    mime::APPLICATION if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
+                    _ => Err(crate::error::Error::UnsupportedContentTypeError(mime_type.essence_str().to_string())),
                 }
-                window.state.borrow_mut().user_styles = None;
-
-                // If the new page has styles, apply them.
-                if !def.styles.is_empty() {
-                    let user_styles = gtk::CssProvider::new();
-                    user_styles.load_from_data(def.styles.as_bytes());
-                    gtk::StyleContext::add_provider_for_display(
-                        &window.app_window.display(),
-                        &user_styles,
-                        gtk::STYLE_PROVIDER_PRIORITY_USER
-                    );
-                    window.state.borrow_mut().user_styles = Some(user_styles);
-                }
-
-                // Set the window title to that requested by the user, or the location if there was
-                // none.
-                window.app_window.set_title(Some(&def.title.unwrap_or(window.state.borrow().location.clone())));
-
-                // Construct the GTK builder from the UI definition.
-                let builder = gtk::Builder::new();
-                builder.add_from_string(&def.buildable)?;
-
-                // Find the "body" widget, and set it as the window's content.
-                match builder.object::<gtk::Widget>("body") {
-                    Some(body) /* once told me */ => window.content.set_child(Some(&body)),
-                    None => println!("No object found named 'body'"),
-                }
-
-                // Set up callbacks for any href attributes.
-                for (object_id, target) in &def.hrefs {
-                    let window = window.clone();
-                    let target = target.clone();
-                    match builder.object::<gtk::Widget>(object_id) {
-                        Some(widget) => {
-                            widget.connect_local("clicked", false, move |_| {
-                                window.clone().href(&target);
-                                None
-                            });
-                        },
-                        None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
-                    }
-                }
-
-                window.state.borrow_mut().builder = builder;
-
-                // Run any defined scripts.
-                for script in &def.scripts {
-                    script.execute(&window);
-                }
-
-                // Clean up any old Lua registry values, such as now-unreferenced callbacks.
-                window.state.borrow().globals.lua.expire_registry_values();
-
-                Ok(())
             };
 
             if let Err(err) = r#do() {
                 let err_text = err.to_string().replace(": ", ":\n");
-                err_case_window.info_bar_text.set_text(&err_text);
-                err_case_window.info_bar.set_message_type(gtk::MessageType::Error);
-                err_case_window.info_bar.set_revealed(true);
+                window.info_bar_text.set_text(&err_text);
+                window.info_bar.set_message_type(gtk::MessageType::Error);
+                window.info_bar.set_revealed(true);
                 println!("Navigation error: {}", err);
             }
 
+            window.status_label.set_text("");
             Continue(false)
         }));
+    }
+
+    fn render_text<R: Read>(self: Rc<Self>, mut r: R) -> crate::Result<()> {
+        let mut s = String::new();
+        r.read_to_string(&mut s)?;
+        self.content.set_child(Some(&gtk::TextView::with_buffer(&gtk::TextBuffer::builder().text(&s).build())));
+        Ok(())
+    }
+
+    fn render_gtk<R: Read>(self: Rc<Self>, r: R) -> crate::Result<()> {
+        let def = crate::ui::Definition::new(r)?;
+
+        // Remove existing user-requested CSS styling, if there is any.
+        if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
+            gtk::StyleContext::remove_provider_for_display(
+                &self.app_window.display(),
+                user_styles);
+        }
+        self.state.borrow_mut().user_styles = None;
+
+        // If the new page has styles, apply them.
+        if !def.styles.is_empty() {
+            let user_styles = gtk::CssProvider::new();
+            user_styles.load_from_data(def.styles.as_bytes());
+            gtk::StyleContext::add_provider_for_display(
+                &self.app_window.display(),
+                &user_styles,
+                gtk::STYLE_PROVIDER_PRIORITY_USER
+            );
+            self.state.borrow_mut().user_styles = Some(user_styles);
+        }
+
+        // Set the window title to that requested by the user, or the location if there was
+        // none.
+        self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
+
+        // Construct the GTK builder from the UI definition.
+        let builder = gtk::Builder::new();
+        builder.add_from_string(&def.buildable)?;
+
+        // Find the "body" widget, and set it as the window's content.
+        match builder.object::<gtk::Widget>("body") {
+            Some(body) /* once told me */ => self.content.set_child(Some(&body)),
+            None => println!("No object found named 'body'"),
+        }
+
+        // Set up callbacks for any href attributes.
+        for (object_id, target) in &def.hrefs {
+            let window = self.clone();
+            let target = target.clone();
+            match builder.object::<gtk::Widget>(object_id) {
+                Some(widget) => {
+                    widget.connect_local("clicked", false, move |_| {
+                        window.clone().href(&target);
+                        None
+                    });
+                },
+                None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
+            }
+        }
+
+        self.state.borrow_mut().builder = builder;
+
+        // Run any defined scripts.
+        for script in &def.scripts {
+            script.execute(&self);
+        }
+
+        // Clean up any old Lua registry values, such as now-unreferenced callbacks.
+        self.state.borrow().globals.lua.expire_registry_values();
+
+        Ok(())
     }
 
     fn href(self: Rc<Self>, target: &String) {

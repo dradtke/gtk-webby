@@ -1,6 +1,6 @@
 #[macro_use] extern crate rocket;
 use rocket::form::Form;
-use rocket::http::{CookieJar, Cookie};
+use rocket::http::{CookieJar, Cookie, ContentType};
 use rocket::response::{status, Redirect};
 use rocket::serde::Serialize;
 use rocket_dyn_templates::Template;
@@ -11,11 +11,14 @@ struct UserInfo<'a> {
 }
 
 #[get("/")]
-fn index(cookies: &CookieJar<'_>) -> Template {
-    match cookies.get("username") {
-        Some(username) => Template::render("home", UserInfo{username: username.value()}),
-        None => Template::render("index", ()),
-    }
+fn index(cookies: &CookieJar<'_>) -> (ContentType, Template) {
+    (
+        ContentType::new("application", "gtk"),
+        match cookies.get("username") {
+            Some(username) => Template::render("home", UserInfo{username: username.value()}),
+            None => Template::render("index", ()),
+        }
+    )
 }
 
 #[derive(FromForm)]

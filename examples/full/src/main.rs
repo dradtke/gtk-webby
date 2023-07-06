@@ -1,6 +1,7 @@
 #[macro_use] extern crate rocket;
 use rocket_dyn_templates::Template;
 use rocket::config::TlsConfig;
+use rocket::http::ContentType;
 use rocket::serde::Serialize;
 
 #[derive(Serialize)]
@@ -9,13 +10,13 @@ struct PageData {
 }
 
 #[get("/")]
-fn index() -> Template {
-    Template::render("index", PageData{
+fn index() -> (ContentType, Template) {
+    (ContentType::new("application", "gtk"), Template::render("index", PageData{
         posts: vec![
             String::from("This is my first post."),
             String::from("This is my second post."),
         ],
-    })
+    }))
 }
 
 #[launch]
