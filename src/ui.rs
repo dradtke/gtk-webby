@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::io::{Read, BufReader, Cursor};
 use quick_xml::events::{Event, BytesStart};
+use quick_xml::name::QName;
 
-const PREFIX: &[u8] = b"web:";
+const PREFIX: &[u8] = b"web";
 const SCRIPT_TAG: &[u8] = b"script";
 const STYLE_TAG: &[u8] = b"style";
 const PAGE_TAG: &[u8] = b"page";
@@ -24,7 +25,7 @@ impl Definition {
     pub fn new<R: Read>(r: R) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
         let mut scripts = Vec::new();
-        let mut styles: Vec<u8> = Vec::new();
+        let mut styles = String::new();
         let mut title = None;
 
         let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
@@ -34,7 +35,7 @@ impl Definition {
             let mut attrs = HashMap::new();
             for attr in bs.attributes() {
                 let attr = attr?;
-                attrs.insert(String::from_utf8(attr.key.to_vec()).unwrap(), String::from_utf8(attr.value.into_owned()).unwrap());
+                attrs.insert(String::from_utf8(attr.key.0.to_vec()).unwrap(), String::from_utf8(attr.value.into_owned()).unwrap());
             }
             Ok(attrs)
         }
@@ -43,10 +44,10 @@ impl Definition {
 
         let mut trim_bytes_start = |bs: &BytesStart| -> crate::Result<BytesStart> {
             let attrs = attrs_map(bs)?;
-            let mut result = BytesStart::owned_name(bs.name());
+            let mut result = bs.to_owned();
             for attr in bs.attributes() {
                 let attr = attr?;
-                match parse_web_tag(attr.key) {
+                match parse_web_tag(&attr.key) {
                     Some(web_tag) => {
                         let value = String::from_utf8(attr.value.to_vec())?;
                         match web_tag {
@@ -75,14 +76,14 @@ impl Definition {
 
         let mut reading_script = false;
         let mut current_script_type = None;
-        let mut current_script = Vec::new();
+        let mut current_script = String::new();
 
         let mut reading_style = false;
 
         loop {
-            match reader.read_event(&mut buf)? {
+            match reader.read_event_into(&mut buf)? {
                 Event::Eof => break,
-                Event::Start(ref bs) => match parse_web_tag(bs.name()) {
+                Event::Start(ref bs) => match parse_web_tag(&bs.name()) {
                     Some(SCRIPT_TAG) => {
                         let attrs = attrs_map(bs)?;
                         match attrs.get("type") {
@@ -91,7 +92,7 @@ impl Definition {
                                 None => println!("script tag found with unknown type '{}'", r#type),
                                 Some(lang) => {
                                     current_script_type = Some(lang);
-                                    current_script = Vec::new();
+                                    current_script = String::new();
                                     reading_script = true;
                                 },
                             },
@@ -104,17 +105,17 @@ impl Definition {
                 },
                 Event::Text(bt) => {
                     if reading_script {
-                        current_script.append(&mut bt.unescaped()?.to_vec());
+                        current_script.push_str(&mut bt.unescape()?);
                     } else if reading_style {
-                        styles.append(&mut bt.unescaped()?.to_vec());
+                        styles.push_str(&mut bt.unescape()?);
                     } else {
                         writer.write_event(Event::Text(bt))?;
                     }
                 },
-                Event::End(be) => match parse_web_tag(be.name()) {
+                Event::End(be) => match parse_web_tag(&be.name()) {
                     Some(SCRIPT_TAG) => {
                         if reading_script {
-                            scripts.push(crate::script::Script::new(current_script_type.unwrap(), String::from_utf8(current_script.clone())?));
+                            scripts.push(crate::script::Script::new(current_script_type.unwrap(), current_script.clone()));
                             reading_script = false;
                         }
                     },
@@ -123,7 +124,7 @@ impl Definition {
                     },
                     _ => writer.write_event(Event::End(be))?,
                 },
-                Event::Empty(ref bs) => match parse_web_tag(bs.name()) {
+                Event::Empty(ref bs) => match parse_web_tag(&bs.name()) {
                     Some(PAGE_TAG) => {
                         let attrs = attrs_map(bs)?;
                         if let Some(v) = attrs.get("title") {
@@ -136,8 +137,6 @@ impl Definition {
             }
         }
 
-        let styles = String::from_utf8(styles)?;
-
         Ok(Definition{
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
@@ -148,11 +147,10 @@ impl Definition {
     }
 }
 
-fn parse_web_tag(name: &[u8]) -> Option<&[u8]> {
-    if name.starts_with(PREFIX) {
-        Some(&name[PREFIX.len()..])
-    } else {
-        None
+fn parse_web_tag<'a>(name: &'a QName) -> Option<&'a [u8]> {
+    match name.prefix() {
+        Some(ref prefix) if prefix.as_ref() == PREFIX => Some(name.local_name().into_inner()),
+        _ => None,
     }
 }
 
@@ -201,8 +199,8 @@ mod test {
 
     #[test]
     pub fn test_parse_web_tag() {
-        assert_eq!(parse_web_tag(b"web:script"), Some(b"script" as &[u8]));
-        assert_eq!(parse_web_tag(b"web:page"), Some(b"page" as &[u8]));
-        assert_eq!(parse_web_tag(b"object"), None);
+        assert_eq!(parse_web_tag(&QName(b"web:script")), Some(b"script" as &[u8]));
+        assert_eq!(parse_web_tag(&QName(b"web:page")), Some(b"page" as &[u8]));
+        assert_eq!(parse_web_tag(&QName(b"object")), None);
     }
 }

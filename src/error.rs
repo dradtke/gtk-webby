@@ -7,6 +7,7 @@ pub enum Error {
     HttpError(reqwest::Error),
     GlibError(glib::error::Error),
     XmlError(quick_xml::Error),
+    XmlAttrError(quick_xml::events::attributes::AttrError),
     FromUtf8Error(std::string::FromUtf8Error),
     NoConversionError,
     HeaderToStrError(reqwest::header::ToStrError),
@@ -22,6 +23,7 @@ impl fmt::Display for Error {
             Error::HttpError(err) => write!(f, "http error: {}", err),
             Error::GlibError(err) => write!(f, "glib error: {}", err),
             Error::XmlError(err) => write!(f, "xml error: {}", err),
+            Error::XmlAttrError(err) => write!(f, "xml attribute error: {}", err),
             Error::FromUtf8Error(err) => write!(f, "from utf8 error: {}", err),
             Error::NoConversionError => write!(f, "no conversion error"),
             Error::HeaderToStrError(err) => write!(f, "failed to convert header value to string: {}", err),
@@ -55,6 +57,12 @@ impl From<glib::Error> for Error {
 impl From<quick_xml::Error> for Error {
     fn from(err: quick_xml::Error) -> Error {
         Error::XmlError(err)
+    }
+}
+
+impl From<quick_xml::events::attributes::AttrError> for Error {
+    fn from(err: quick_xml::events::attributes::AttrError) -> Error {
+        Error::XmlAttrError(err)
     }
 }
 
