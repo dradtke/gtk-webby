@@ -169,6 +169,7 @@ impl Window {
                 };
 
                 match mime_type.type_() {
+                    mime::TEXT if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
                     mime::TEXT => window.clone().render_text(response),
                     mime::APPLICATION if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
                     _ => Err(crate::error::Error::UnsupportedContentTypeError(mime_type.essence_str().to_string())),
