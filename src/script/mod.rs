@@ -37,14 +37,14 @@ impl Lang {
     }
 }
 
-pub struct Script{
+pub struct Script {
     pub lang: Lang,
     pub text: String,
 }
 
 impl Script {
     pub fn new(lang: Lang, text: String) -> Script {
-        Script{lang, text}
+        Script { lang, text }
     }
 
     pub fn execute(&self, window: &Window) {
@@ -54,14 +54,14 @@ impl Script {
                 if let Err(err) = window.state.borrow().globals.lua.load(&self.text).exec() {
                     println!("Lua script execution error: {}", err);
                 }
-            },
+            }
         }
     }
 }
 
 #[derive(Debug)]
 pub enum Error {
-    UnsupportedOperation
+    UnsupportedOperation,
 }
 
 impl fmt::Display for Error {

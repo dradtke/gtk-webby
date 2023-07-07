@@ -1,9 +1,9 @@
 use gtk::prelude::*;
 use mlua::prelude::*;
 
-use gtk::glib;
 use glib::signal::SignalHandlerId;
 use glib::{Continue, MainContext, PRIORITY_DEFAULT};
+use gtk::glib;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,7 +16,13 @@ pub fn init(window: Rc<crate::window::Window>) {
         for (name, function) in global_functions(lua, window.clone())? {
             lua.globals().set(name, function)?;
         }
-        lua.globals().set(super::WINDOW, Window{globals, window: window.clone()})?;
+        lua.globals().set(
+            super::WINDOW,
+            Window {
+                globals,
+                window: window.clone(),
+            },
+        )?;
         Ok(())
     };
 
@@ -25,112 +31,148 @@ pub fn init(window: Rc<crate::window::Window>) {
     }
 }
 
-fn global_functions(lua: &'static Lua, window: Rc<crate::window::Window>) -> LuaResult<HashMap<&'static str, LuaFunction>> {
+fn global_functions(
+    lua: &'static Lua,
+    window: Rc<crate::window::Window>,
+) -> LuaResult<HashMap<&'static str, LuaFunction>> {
     let mut functions = HashMap::new();
 
     {
         let window = window.clone();
-        functions.insert(super::ALERT, lua.create_function(move |_, text: String| {
-            window.clone().alert(&text);
-            Ok(())
-        })?);
+        functions.insert(
+            super::ALERT,
+            lua.create_function(move |_, text: String| {
+                window.clone().alert(&text);
+                Ok(())
+            })?,
+        );
     }
 
     {
         let window = window.clone();
-        functions.insert(super::FIND_WIDGET, lua.create_function(move |_, id: String| {
-            match window.state.borrow().builder.object::<gtk::Widget>(&id) {
-                // TODO: need to figure out how to drop this widget after it's no longer visible
-                Some(widget) => Ok(Some(Widget::new(lua, widget))),
-                None => {
-                    println!("No widget found with id: {}", &id);
-                    Ok(None)
-                },
-            }
-        })?);
-    }
-
-    {
-        let window = window.clone();
-        functions.insert(super::SUBMIT_FORM, lua.create_function(move |_, (method, action, values): (String, String, LuaTable)| {
-            let method = match reqwest::Method::from_bytes(method.as_bytes()) {
-                Ok(method) => method,
-                Err(err) => {
-                    return Err(LuaError::ExternalError(Arc::new(err)));
-                },
-            };
-
-            let mut form_values = HashMap::new();
-            // TODO: automatically convert other types, like boolean?
-            for pair in values.pairs::<String, String>() {
-                let (key, value) = pair?;
-                form_values.insert(key, value);
-            }
-
-            let http_client = &window.state.borrow().http_client;
-            let response = match http_client.request(method, crate::util::absolutize_url(&window.state.borrow().location, &action)).form(&form_values).send() {
-                Ok(response) => response,
-                Err(err) => {
-                    return Err(LuaError::ExternalError(Arc::new(err)));
-                },
-            };
-
-            if response.status().is_success() {
-                window.clone().reload();
-            } else if response.status().is_redirection() {
-                println!("TODO: Need to redirect, probably to {}", response.url());
-            }
-            Ok(())
-        })?);
-    }
-
-    {
-        let window = window.clone();
-        functions.insert(super::FETCH, lua.create_function(move |_, (method, url, callback): (String, String, LuaFunction)| {
-            if !url.contains("://") {
-                if let Err(err) = callback.call::<_, ()>((format!("URL is missing protocol: {}", url), LuaValue::Nil)) {
-                    println!("Failed to invoke fetch callback: {}", err);
+        functions.insert(
+            super::FIND_WIDGET,
+            lua.create_function(move |_, id: String| {
+                match window.state.borrow().builder.object::<gtk::Widget>(&id) {
+                    // TODO: need to figure out how to drop this widget after it's no longer visible
+                    Some(widget) => Ok(Some(Widget::new(lua, widget))),
+                    None => {
+                        println!("No widget found with id: {}", &id);
+                        Ok(None)
+                    }
                 }
-                return Ok(());
-            }
+            })?,
+        );
+    }
 
-            let method = match reqwest::Method::from_bytes(method.as_bytes()) {
-                Ok(method) => method,
-                Err(err) => {
-                    return Err(LuaError::ExternalError(Arc::new(err)));
+    {
+        let window = window.clone();
+        functions.insert(
+            super::SUBMIT_FORM,
+            lua.create_function(
+                move |_, (method, action, values): (String, String, LuaTable)| {
+                    let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+                        Ok(method) => method,
+                        Err(err) => {
+                            return Err(LuaError::ExternalError(Arc::new(err)));
+                        }
+                    };
+
+                    let mut form_values = HashMap::new();
+                    // TODO: automatically convert other types, like boolean?
+                    for pair in values.pairs::<String, String>() {
+                        let (key, value) = pair?;
+                        form_values.insert(key, value);
+                    }
+
+                    let http_client = &window.state.borrow().http_client;
+                    let response = match http_client
+                        .request(
+                            method,
+                            crate::util::absolutize_url(&window.state.borrow().location, &action),
+                        )
+                        .form(&form_values)
+                        .send()
+                    {
+                        Ok(response) => response,
+                        Err(err) => {
+                            return Err(LuaError::ExternalError(Arc::new(err)));
+                        }
+                    };
+
+                    if response.status().is_success() {
+                        window.clone().reload();
+                    } else if response.status().is_redirection() {
+                        println!("TODO: Need to redirect, probably to {}", response.url());
+                    }
+                    Ok(())
                 },
-            };
+            )?,
+        );
+    }
 
-            let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
-
-            let request = window.state.borrow().http_client.request(method, url);
-            std::thread::spawn(move || {
-                let response_result = request.send();
-                if let Err(err) = sender.send(response_result) {
-                    println!("fetch: Failed to send response on channel: {}", err);
-                }
-            });
-
-            let callback_key = lua.create_registry_value(callback).expect("Failed to create Lua registry value");
-            receiver.attach(None, move |response_result| {
-                let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
-                match response_result {
-                    Ok(response) => {
-                        if let Err(err) = f.call::<_, ()>((LuaValue::Nil, Response::new(response))) {
+    {
+        let window = window.clone();
+        functions.insert(
+            super::FETCH,
+            lua.create_function(
+                move |_, (method, url, callback): (String, String, LuaFunction)| {
+                    if !url.contains("://") {
+                        if let Err(err) = callback.call::<_, ()>((
+                            format!("URL is missing protocol: {}", url),
+                            LuaValue::Nil,
+                        )) {
                             println!("Failed to invoke fetch callback: {}", err);
                         }
-                    },
-                    Err(err) => {
-                        if let Err(err) = f.call::<_, ()>((LuaError::ExternalError(Arc::new(err)), LuaValue::Nil)) {
-                            println!("Failed to invoke fetch callback: {}", err);
+                        return Ok(());
+                    }
+
+                    let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+                        Ok(method) => method,
+                        Err(err) => {
+                            return Err(LuaError::ExternalError(Arc::new(err)));
                         }
-                    },
-                }
-                // lua.remove_registry_value(callback_key);
-                Continue(false)
-            });
-            Ok(())
-        })?);
+                    };
+
+                    let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
+
+                    let request = window.state.borrow().http_client.request(method, url);
+                    std::thread::spawn(move || {
+                        let response_result = request.send();
+                        if let Err(err) = sender.send(response_result) {
+                            println!("fetch: Failed to send response on channel: {}", err);
+                        }
+                    });
+
+                    let callback_key = lua
+                        .create_registry_value(callback)
+                        .expect("Failed to create Lua registry value");
+                    receiver.attach(None, move |response_result| {
+                        let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
+                        match response_result {
+                            Ok(response) => {
+                                if let Err(err) =
+                                    f.call::<_, ()>((LuaValue::Nil, Response::new(response)))
+                                {
+                                    println!("Failed to invoke fetch callback: {}", err);
+                                }
+                            }
+                            Err(err) => {
+                                if let Err(err) = f.call::<_, ()>((
+                                    LuaError::ExternalError(Arc::new(err)),
+                                    LuaValue::Nil,
+                                )) {
+                                    println!("Failed to invoke fetch callback: {}", err);
+                                }
+                            }
+                        }
+                        // lua.remove_registry_value(callback_key);
+                        Continue(false)
+                    });
+                    Ok(())
+                },
+            )?,
+        );
     }
 
     Ok(functions)
@@ -151,29 +193,37 @@ fn glib_to_lua(lua: &'static Lua, value: glib::Value) -> Option<LuaValue> {
             let transformed_value = match value.transform_with_type(t) {
                 Ok(v) => v,
                 Err(err) => {
-                    println!("failed to transform value '{:?}' into type '{:?}': {}", value, t, err);
-                    return None
-                },
+                    println!(
+                        "failed to transform value '{:?}' into type '{:?}': {}",
+                        value, t, err
+                    );
+                    return None;
+                }
             };
             let widget: gtk::Widget = match transformed_value.get() {
                 Ok(widget) => widget,
                 Err(err) => {
                     println!("failed to extract value as widget: {}", err);
-                    return None
-                },
+                    return None;
+                }
             };
 
             // Okay, so putting the userdata into a table works, but using it directly in a
             // function call doesn't...
             {
-                lua.globals().set("special_widget_value", Widget::new(lua, widget.clone()).to_lua(lua).unwrap()).unwrap();
+                lua.globals()
+                    .set(
+                        "special_widget_value",
+                        Widget::new(lua, widget.clone()).to_lua(lua).unwrap(),
+                    )
+                    .unwrap();
             }
             let lua_widget = match Widget::new(lua, widget).to_lua(lua) {
                 Ok(lua_widget) => lua_widget,
                 Err(err) => {
                     println!("failed to convert widget into Lua value: {}", err);
-                    return None
-                },
+                    return None;
+                }
             };
             return Some(lua_widget);
         }
@@ -190,7 +240,7 @@ fn lua_to_glib(value: &LuaValue) -> Option<glib::Value> {
         t => {
             println!("Unimplemented Lua->glib conversion: {:?}", t);
             None
-        },
+        }
     }
 }
 
@@ -202,7 +252,7 @@ struct Widget {
 
 impl Widget {
     fn new(lua: &'static Lua, widget: gtk::Widget) -> Self {
-        Self{
+        Self {
             lua,
             widget,
             signal_ids: Vec::new(),
@@ -212,88 +262,113 @@ impl Widget {
 
 impl LuaUserData for Widget {
     fn add_methods<'lua, M: LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method_mut(super::CONNECT, |_, this, (signal, after, callback): (String, bool, LuaFunction)| {
-            let lua: &'static Lua = this.lua;
+        methods.add_method_mut(
+            super::CONNECT,
+            |_, this, (signal, after, callback): (String, bool, LuaFunction)| {
+                let lua: &'static Lua = this.lua;
 
-            let callback_key = lua.create_registry_value(callback).expect("Failed to create Lua registry value");
-            let signal_id = this.widget.connect_local(&signal, after, move |values| {
-                /*
-                let lua_values = match values.iter().map(|v| glib_to_lua(lua, v)).collect::<Option<Vec<LuaValue>>>() {
-                    Some(lua_values) => lua_values,
-                    None => {
-                        println!("Failed to convert one or more glib values to Lua");
-                        return None;
-                    },
-                };
-                */
+                let callback_key = lua
+                    .create_registry_value(callback)
+                    .expect("Failed to create Lua registry value");
+                let signal_id = this.widget.connect_local(&signal, after, move |values| {
+                    /*
+                    let lua_values = match values.iter().map(|v| glib_to_lua(lua, v)).collect::<Option<Vec<LuaValue>>>() {
+                        Some(lua_values) => lua_values,
+                        None => {
+                            println!("Failed to convert one or more glib values to Lua");
+                            return None;
+                        },
+                    };
+                    */
 
-                // NOTE: This is very hacky, but when passing the widget reference into the
-                // callback arguments directly, it doesn't seem to have any methods registered.
-                // TODO: try to cast values[0] to a widget
-                if values.len() > 0 {
-                    if let Ok(widget_value) = values[0].transform_with_type(gtk::Widget::static_type()) {
-                        if let Err(err) = lua.globals().set("this", Widget::new(lua, widget_value.get().unwrap())) {
-                            println!("Failed to set 'this' value before callback: {}", err);
+                    // NOTE: This is very hacky, but when passing the widget reference into the
+                    // callback arguments directly, it doesn't seem to have any methods registered.
+                    // TODO: try to cast values[0] to a widget
+                    if values.len() > 0 {
+                        if let Ok(widget_value) =
+                            values[0].transform_with_type(gtk::Widget::static_type())
+                        {
+                            if let Err(err) = lua
+                                .globals()
+                                .set("this", Widget::new(lua, widget_value.get().unwrap()))
+                            {
+                                println!("Failed to set 'this' value before callback: {}", err);
+                            }
                         }
                     }
-                }
 
-                let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
-                let retvals = match f.call::<_, LuaMultiValue>(/*lua_values*/()) {
-                    Ok(retval) => retval,
-                    Err(err) => {
-                        println!("Error calling Lua callback: {:?}", err);
-                        return None;
-                    },
-                }.into_vec();
+                    let f: LuaFunction = lua.registry_value(&callback_key).unwrap();
+                    let retvals = match f.call::<_, LuaMultiValue>(/*lua_values*/ ()) {
+                        Ok(retval) => retval,
+                        Err(err) => {
+                            println!("Error calling Lua callback: {:?}", err);
+                            return None;
+                        }
+                    }
+                    .into_vec();
 
-                match retvals.len() {
-                    0 => None,
-                    1 => lua_to_glib(&retvals[0]),
-                    n => {
-                        println!("Cannot return {} values in callback", n);
-                        None
-                    },
-                }
-            });
+                    match retvals.len() {
+                        0 => None,
+                        1 => lua_to_glib(&retvals[0]),
+                        n => {
+                            println!("Cannot return {} values in callback", n);
+                            None
+                        }
+                    }
+                });
 
-            this.signal_ids.push((this.widget.clone(), signal_id));
-            Ok(())
-        });
+                this.signal_ids.push((this.widget.clone(), signal_id));
+                Ok(())
+            },
+        );
 
-        methods.add_method(super::GET_PROPERTY, |_, this, property_name: String| {
-            match this.widget.try_property_value(&property_name) {
+        methods.add_method(
+            super::GET_PROPERTY,
+            |_, this, property_name: String| match this.widget.try_property_value(&property_name) {
                 Ok(value) => Ok(glib_to_lua(this.lua, value)),
                 Err(err) => {
                     println!("Failed to get property '{}': {}", &property_name, err);
                     Err(LuaError::ExternalError(Arc::new(err)))
-                },
-            }
-        });
+                }
+            },
+        );
 
-        methods.add_method(super::SET_PROPERTY, |_, this, (property_name, property_value): (String, LuaValue)| {
-            let value = match lua_to_glib(&property_value) {
-                Some(value) => value,
-                None => {
-                    println!("Failed to convert property value to glib: {:?}", &property_value);
-                    return Err(LuaError::ExternalError(Arc::new(crate::error::Error::NoConversionError)));
-                },
-            };
+        methods.add_method(
+            super::SET_PROPERTY,
+            |_, this, (property_name, property_value): (String, LuaValue)| {
+                let value = match lua_to_glib(&property_value) {
+                    Some(value) => value,
+                    None => {
+                        println!(
+                            "Failed to convert property value to glib: {:?}",
+                            &property_value
+                        );
+                        return Err(LuaError::ExternalError(Arc::new(
+                            crate::error::Error::NoConversionError,
+                        )));
+                    }
+                };
 
-            if let Err(err) = this.widget.try_set_property_from_value(&property_name, &value) {
-                println!("Failed to get property '{}': {}", &property_name, err);
-                return Err(LuaError::ExternalError(Arc::new(err)));
-            }
+                if let Err(err) = this
+                    .widget
+                    .try_set_property_from_value(&property_name, &value)
+                {
+                    println!("Failed to get property '{}': {}", &property_name, err);
+                    return Err(LuaError::ExternalError(Arc::new(err)));
+                }
 
-            Ok(())
-        });
+                Ok(())
+            },
+        );
 
         methods.add_method(super::GET_TEXT, |_, this, ()| {
             // TODO: work for more than Entry widgets?
             if let Ok(entry) = this.widget.clone().downcast::<gtk::Entry>() {
                 return Ok(entry.buffer().text());
             }
-            Err(LuaError::ExternalError(Arc::new(super::Error::UnsupportedOperation)))
+            Err(LuaError::ExternalError(Arc::new(
+                super::Error::UnsupportedOperation,
+            )))
         });
 
         methods.add_method(super::SET_SENSITIVE, |_, this, sensitive: bool| {
@@ -306,7 +381,9 @@ impl LuaUserData for Widget {
                 button.set_label(&label);
                 Ok(())
             } else {
-                Err(LuaError::ExternalError(Arc::new(super::Error::UnsupportedOperation)))
+                Err(LuaError::ExternalError(Arc::new(
+                    super::Error::UnsupportedOperation,
+                )))
             }
         });
 
@@ -335,7 +412,7 @@ struct Response {
 
 impl Response {
     fn new(r: reqwest::blocking::Response) -> Self {
-        Self{
+        Self {
             status_code: r.status().as_u16(),
             body: r.text().ok(),
         }
@@ -368,7 +445,13 @@ mod test {
     pub fn test_glib_value_to_lua() {
         // TODO: finish adding types, and figure out if it's possible to do null
         let lua = Box::leak(Box::new(Lua::new()));
-        assert_eq!(glib_to_lua(lua, true.to_value()), Some(LuaValue::Boolean(true)));
-        assert_eq!(glib_to_lua(lua, false.to_value()), Some(LuaValue::Boolean(false)));
+        assert_eq!(
+            glib_to_lua(lua, true.to_value()),
+            Some(LuaValue::Boolean(true))
+        );
+        assert_eq!(
+            glib_to_lua(lua, false.to_value()),
+            Some(LuaValue::Boolean(false))
+        );
     }
 }

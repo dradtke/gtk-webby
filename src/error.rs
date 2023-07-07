@@ -26,10 +26,14 @@ impl fmt::Display for Error {
             Error::XmlAttrError(err) => write!(f, "xml attribute error: {}", err),
             Error::FromUtf8Error(err) => write!(f, "from utf8 error: {}", err),
             Error::NoConversionError => write!(f, "no conversion error"),
-            Error::HeaderToStrError(err) => write!(f, "failed to convert header value to string: {}", err),
+            Error::HeaderToStrError(err) => {
+                write!(f, "failed to convert header value to string: {}", err)
+            }
             Error::MimeParseError(err) => write!(f, "failed to parse mime type: {}", err),
             Error::NoContentTypeError => write!(f, "no Content-Type header provided by server"),
-            Error::UnsupportedContentTypeError(content_type) => write!(f, "unsupported Content-Type: {}", content_type),
+            Error::UnsupportedContentTypeError(content_type) => {
+                write!(f, "unsupported Content-Type: {}", content_type)
+            }
         }
     }
 }

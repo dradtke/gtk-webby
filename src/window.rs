@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::io::Read;
 use std::rc::Rc;
 
+use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
 use gtk::glib;
 use gtk::prelude::*;
-use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
 
 pub struct Window {
     #[allow(dead_code)]
@@ -54,12 +54,13 @@ impl Window {
             .vexpand(true)
             .build();
 
-        let info_bar = gtk::InfoBar::builder().revealed(false).show_close_button(true).build();
-        info_bar.connect_response(move |this, response| {
-            match response {
-                gtk::ResponseType::Close => this.set_revealed(false),
-                _ => (),
-            }
+        let info_bar = gtk::InfoBar::builder()
+            .revealed(false)
+            .show_close_button(true)
+            .build();
+        info_bar.connect_response(move |this, response| match response {
+            gtk::ResponseType::Close => this.set_revealed(false),
+            _ => (),
         });
         let info_bar_text = gtk::Label::new(None);
         info_bar.add_child(&info_bar_text);
@@ -99,8 +100,14 @@ impl Window {
 
         let builder = gtk::Builder::new();
         let user_styles = None;
-        let state = State{globals, location, http_client, builder, user_styles};
-        let window = Rc::new(Self{
+        let state = State {
+            globals,
+            location,
+            http_client,
+            builder,
+            user_styles,
+        };
+        let window = Rc::new(Self {
             app_window,
             back_button,
             forward_button,
@@ -116,26 +123,36 @@ impl Window {
 
         crate::script::lua::init(window.clone());
 
-        window.back_button.connect_clicked(clone!(@weak window => move |_| {
-            eprintln!("TODO: go back");
-        }));
+        window
+            .back_button
+            .connect_clicked(clone!(@weak window => move |_| {
+                eprintln!("TODO: go back");
+            }));
 
-        window.forward_button.connect_clicked(clone!(@weak window => move |_| {
-            eprintln!("TODO: go forward");
-        }));
+        window
+            .forward_button
+            .connect_clicked(clone!(@weak window => move |_| {
+                eprintln!("TODO: go forward");
+            }));
 
-        window.refresh_button.connect_clicked(clone!(@weak window => move |_| {
-            window.refresh();
-        }));
+        window
+            .refresh_button
+            .connect_clicked(clone!(@weak window => move |_| {
+                window.refresh();
+            }));
 
-        window.bookmark_button.connect_clicked(clone!(@weak window => move |_| {
-            eprintln!("TODO: add bookmark");
-        }));
+        window
+            .bookmark_button
+            .connect_clicked(clone!(@weak window => move |_| {
+                eprintln!("TODO: add bookmark");
+            }));
 
-        window.address_entry.connect_activate(clone!(@weak window => move |_| {
-            let location = window.address_entry.text().to_string();
-            window.go(location);
-        }));
+        window
+            .address_entry
+            .connect_activate(clone!(@weak window => move |_| {
+                let location = window.address_entry.text().to_string();
+                window.go(location);
+            }));
     }
 
     fn refresh(self: Rc<Self>) {
@@ -147,7 +164,8 @@ impl Window {
         self.info_bar.set_revealed(false);
 
         //println!("Navigating to: {}", &location);
-        self.status_label.set_label(&format!("Loading {}...", &location));
+        self.status_label
+            .set_label(&format!("Loading {}...", &location));
         let request = self.state.borrow().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {
@@ -192,7 +210,9 @@ impl Window {
     fn render_text<R: Read>(self: Rc<Self>, mut r: R) -> crate::Result<()> {
         let mut s = String::new();
         r.read_to_string(&mut s)?;
-        self.content.set_child(Some(&gtk::TextView::with_buffer(&gtk::TextBuffer::builder().text(&s).build())));
+        self.content.set_child(Some(&gtk::TextView::with_buffer(
+            &gtk::TextBuffer::builder().text(&s).build(),
+        )));
         Ok(())
     }
 
@@ -201,9 +221,7 @@ impl Window {
 
         // Remove existing user-requested CSS styling, if there is any.
         if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
-            gtk::StyleContext::remove_provider_for_display(
-                &self.app_window.display(),
-                user_styles);
+            gtk::StyleContext::remove_provider_for_display(&self.app_window.display(), user_styles);
         }
         self.state.borrow_mut().user_styles = None;
 
@@ -214,14 +232,16 @@ impl Window {
             gtk::StyleContext::add_provider_for_display(
                 &self.app_window.display(),
                 &user_styles,
-                gtk::STYLE_PROVIDER_PRIORITY_USER
+                gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
             self.state.borrow_mut().user_styles = Some(user_styles);
         }
 
         // Set the window title to that requested by the user, or the location if there was
         // none.
-        self.app_window.set_title(Some(&def.title.unwrap_or(self.state.borrow().location.clone())));
+        self.app_window.set_title(Some(
+            &def.title.unwrap_or(self.state.borrow().location.clone()),
+        ));
 
         // Construct the GTK builder from the UI definition.
         let builder = gtk::Builder::new();
@@ -243,8 +263,11 @@ impl Window {
                         window.clone().href(&target);
                         None
                     });
-                },
-                None => println!("href: no object with id, or object is of the wrong type: {}", object_id),
+                }
+                None => println!(
+                    "href: no object with id, or object is of the wrong type: {}",
+                    object_id
+                ),
             }
         }
 

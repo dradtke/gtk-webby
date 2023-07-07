@@ -1,7 +1,7 @@
+use glib::clone;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
-use glib::clone;
 use gtk::prelude::*;
 use mlua::prelude::*;
 use std::cell::RefCell;
@@ -21,7 +21,7 @@ type Result<T> = core::result::Result<T, error::Error>;
 
 pub struct Globals {
     root_certs: Vec<reqwest::tls::Certificate>,
-    lua: Lua
+    lua: Lua,
 }
 
 fn load_cert(path: &str) -> anyhow::Result<reqwest::tls::Certificate> {
@@ -80,7 +80,7 @@ fn main() {
         gtk::StyleContext::add_provider_for_display(
             &gdk::Display::default().expect("could not connect to a display"),
             &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
 
         app.set_menubar(Some(&build_menu()));
@@ -88,9 +88,9 @@ fn main() {
 
     app.connect_activate(move |app| {
         // glib callbacks need referenced values to be 'static.
-        let globals = Box::leak(Box::new(Globals{
+        let globals = Box::leak(Box::new(Globals {
             root_certs: root_certs.borrow().clone(),
-            lua: Lua::new()
+            lua: Lua::new(),
         }));
         window::Window::new(app, globals);
     });
@@ -102,7 +102,7 @@ fn define_actions(app: &gtk::Application) {
     let quit = gio::SimpleAction::new("quit", None);
     {
         let app = app.clone();
-        quit.connect_activate(move |_,_| app.quit());
+        quit.connect_activate(move |_, _| app.quit());
     }
     app.add_action(&quit);
 

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::io::{Read, BufReader, Cursor};
-use quick_xml::events::{Event, BytesStart};
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::QName;
+use std::collections::HashMap;
+use std::io::{BufReader, Cursor, Read};
 
 const PREFIX: &[u8] = b"web";
 const SCRIPT_TAG: &[u8] = b"script";
@@ -35,7 +35,10 @@ impl Definition {
             let mut attrs = HashMap::new();
             for attr in bs.attributes() {
                 let attr = attr?;
-                attrs.insert(String::from_utf8(attr.key.0.to_vec()).unwrap(), String::from_utf8(attr.value.into_owned()).unwrap());
+                attrs.insert(
+                    String::from_utf8(attr.key.0.to_vec()).unwrap(),
+                    String::from_utf8(attr.value.into_owned()).unwrap(),
+                );
             }
             Ok(attrs)
         }
@@ -55,17 +58,22 @@ impl Definition {
                                 let id = match attrs.get("id") {
                                     Some(id) => id.clone(),
                                     None => {
-                                        let class = attrs.get("class").expect("expected 'class' attribute to be present");
+                                        let class = attrs
+                                            .get("class")
+                                            .expect("expected 'class' attribute to be present");
                                         let id = id_autogenerator.next(&class);
                                         result.push_attribute(("id", id.as_str()));
                                         id
-                                    },
+                                    }
                                 };
                                 hrefs.insert(id.to_string(), value);
-                            },
-                            k => println!("unknown web attribute: {}", String::from_utf8(k.to_vec())?),
+                            }
+                            k => println!(
+                                "unknown web attribute: {}",
+                                String::from_utf8(k.to_vec())?
+                            ),
                         }
-                    },
+                    }
                     None => result.push_attribute(attr),
                 }
             }
@@ -94,13 +102,13 @@ impl Definition {
                                     current_script_type = Some(lang);
                                     current_script = String::new();
                                     reading_script = true;
-                                },
+                                }
                             },
                         }
-                    },
+                    }
                     Some(STYLE_TAG) => {
                         reading_style = true;
-                    },
+                    }
                     _ => writer.write_event(Event::Start(trim_bytes_start(bs)?))?,
                 },
                 Event::Text(bt) => {
@@ -111,17 +119,20 @@ impl Definition {
                     } else {
                         writer.write_event(Event::Text(bt))?;
                     }
-                },
+                }
                 Event::End(be) => match parse_web_tag(&be.name()) {
                     Some(SCRIPT_TAG) => {
                         if reading_script {
-                            scripts.push(crate::script::Script::new(current_script_type.unwrap(), current_script.clone()));
+                            scripts.push(crate::script::Script::new(
+                                current_script_type.unwrap(),
+                                current_script.clone(),
+                            ));
                             reading_script = false;
                         }
-                    },
+                    }
                     Some(STYLE_TAG) => {
                         reading_style = false;
-                    },
+                    }
                     _ => writer.write_event(Event::End(be))?,
                 },
                 Event::Empty(ref bs) => match parse_web_tag(&bs.name()) {
@@ -130,14 +141,14 @@ impl Definition {
                         if let Some(v) = attrs.get("title") {
                             title = Some(v.clone());
                         }
-                    },
+                    }
                     _ => writer.write_event(Event::Empty(trim_bytes_start(bs)?))?,
                 },
                 e => writer.write_event(&e)?,
             }
         }
 
-        Ok(Definition{
+        Ok(Definition {
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
             scripts,
@@ -176,7 +187,10 @@ mod test {
     pub fn test_new_definition_removes_web_attrs() -> crate::Result<()> {
         let body = r#"<interface><object id="button" web:clicked="do_something();" /></interface>"#;
         let def = Definition::new(body.as_bytes())?;
-        assert_eq!(def.buildable, r#"<interface><object id="button"/></interface>"#);
+        assert_eq!(
+            def.buildable,
+            r#"<interface><object id="button"/></interface>"#
+        );
         Ok(())
     }
 
@@ -184,22 +198,37 @@ mod test {
     pub fn test_parse_href() -> crate::Result<()> {
         let body = r#"<interface><object id="button" web:href="/some/page" /></interface>"#;
         let def = Definition::new(body.as_bytes())?;
-        assert_eq!(def.hrefs, HashMap::from([(String::from("button"), String::from("/some/page"))]));
+        assert_eq!(
+            def.hrefs,
+            HashMap::from([(String::from("button"), String::from("/some/page"))])
+        );
         Ok(())
     }
 
     #[test]
     pub fn test_autogen_ids() {
         let mut id_autogenerator = IdAutogenerator::new();
-        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-1");
-        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-2");
-        assert_eq!(id_autogenerator.next(&"GtkButton".to_string()), "GtkButton-3");
+        assert_eq!(
+            id_autogenerator.next(&"GtkButton".to_string()),
+            "GtkButton-1"
+        );
+        assert_eq!(
+            id_autogenerator.next(&"GtkButton".to_string()),
+            "GtkButton-2"
+        );
+        assert_eq!(
+            id_autogenerator.next(&"GtkButton".to_string()),
+            "GtkButton-3"
+        );
         assert_eq!(id_autogenerator.next(&"GtkLabel".to_string()), "GtkLabel-1");
     }
 
     #[test]
     pub fn test_parse_web_tag() {
-        assert_eq!(parse_web_tag(&QName(b"web:script")), Some(b"script" as &[u8]));
+        assert_eq!(
+            parse_web_tag(&QName(b"web:script")),
+            Some(b"script" as &[u8])
+        );
         assert_eq!(parse_web_tag(&QName(b"web:page")), Some(b"page" as &[u8]));
         assert_eq!(parse_web_tag(&QName(b"object")), None);
     }
