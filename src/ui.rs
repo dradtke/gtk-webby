@@ -47,7 +47,8 @@ impl Definition {
 
         let mut trim_bytes_start = |bs: &BytesStart| -> crate::Result<BytesStart> {
             let attrs = attrs_map(bs)?;
-            let mut result = bs.to_owned();
+            let tag_name = String::from_utf8(bs.name().local_name().into_inner().to_vec())?;
+            let mut result = BytesStart::new(tag_name);
             for attr in bs.attributes() {
                 let attr = attr?;
                 match parse_web_tag(&attr.key) {
@@ -74,7 +75,9 @@ impl Definition {
                             ),
                         }
                     }
-                    None => result.push_attribute(attr),
+                    None => {
+                        result.push_attribute(attr);
+                    }
                 }
             }
             Ok(result)
@@ -148,13 +151,14 @@ impl Definition {
             }
         }
 
-        Ok(Definition {
+        let def = Definition {
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
             scripts,
             styles,
             title,
-        })
+        };
+        Ok(def)
     }
 }
 
