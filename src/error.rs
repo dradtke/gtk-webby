@@ -13,6 +13,7 @@ pub enum Error {
     HeaderToStrError(reqwest::header::ToStrError),
     MimeParseError(mime::FromStrError),
     NoContentTypeError,
+    UnsupportedCharsetError(String),
     UnsupportedContentTypeError(String),
 }
 
@@ -31,6 +32,9 @@ impl fmt::Display for Error {
             }
             Error::MimeParseError(err) => write!(f, "failed to parse mime type: {}", err),
             Error::NoContentTypeError => write!(f, "no Content-Type header provided by server"),
+            Error::UnsupportedCharsetError(charset) => {
+                write!(f, "expected UTF-8, received charset: {}", charset)
+            }
             Error::UnsupportedContentTypeError(content_type) => {
                 write!(f, "unsupported Content-Type: {}", content_type)
             }

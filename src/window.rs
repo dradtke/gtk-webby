@@ -178,6 +178,11 @@ impl Window {
         receiver.attach(None, clone!(@weak self as window => @default-return Continue(false), move |response_result| {
             let r#do = || -> crate::Result<()> {
                 let response = response_result?;
+                //println!("headers:");
+                //for header in response.headers().iter() {
+                //    println!("  {} = {:?}", header.0, header.1);
+                //}
+
                 window.content.set_child(gtk::Widget::NONE);
                 window.state.borrow_mut().location = response.url().to_string();
 
@@ -185,6 +190,12 @@ impl Window {
                     Some(content_type) => content_type.to_str()?.parse()?,
                     None => return Err(crate::error::Error::NoContentTypeError),
                 };
+
+                if let Some(charset) = mime_type.get_param("charset") {
+                    if charset.as_str() != "utf-8" {
+                        return Err(crate::error::Error::UnsupportedCharsetError(charset.as_str().into()));
+                    }
+                }
 
                 match mime_type.type_() {
                     mime::TEXT if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
