@@ -1,7 +1,7 @@
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::QName;
 use std::collections::HashMap;
-use std::io::{BufReader, Cursor, Read};
+use std::io::Cursor;
 
 const PREFIX: &[u8] = b"web";
 const SCRIPT_TAG: &[u8] = b"script";
@@ -9,6 +9,8 @@ const STYLE_TAG: &[u8] = b"style";
 const PAGE_TAG: &[u8] = b"page";
 
 pub struct Definition {
+    /// The raw UI definition, before processing web-specific extensions.
+    pub source: String,
     /// The UI definition with web-specific extensions removed.
     pub buildable: String,
     /// Map of object id to href target.
@@ -22,13 +24,13 @@ pub struct Definition {
 }
 
 impl Definition {
-    pub fn new<R: Read>(r: R) -> super::Result<Definition> {
+    pub fn new(source: String) -> super::Result<Definition> {
         let mut hrefs = HashMap::new();
         let mut scripts = Vec::new();
         let mut styles = String::new();
         let mut title = None;
 
-        let mut reader = quick_xml::Reader::from_reader(BufReader::new(r));
+        let mut reader = quick_xml::Reader::from_str(&source);
         let mut writer = quick_xml::Writer::new(Cursor::new(Vec::new()));
 
         fn attrs_map(bs: &BytesStart) -> super::Result<HashMap<String, String>> {
@@ -152,6 +154,7 @@ impl Definition {
         }
 
         let def = Definition {
+            source,
             buildable: String::from_utf8(writer.into_inner().into_inner())?,
             hrefs,
             scripts,
@@ -190,7 +193,7 @@ mod test {
     #[test]
     pub fn test_new_definition_removes_web_attrs() -> crate::Result<()> {
         let body = r#"<interface><object id="button" web:clicked="do_something();" /></interface>"#;
-        let def = Definition::new(body.as_bytes())?;
+        let def = Definition::new(body.to_string())?;
         assert_eq!(
             def.buildable,
             r#"<interface><object id="button"/></interface>"#
@@ -201,7 +204,7 @@ mod test {
     #[test]
     pub fn test_parse_href() -> crate::Result<()> {
         let body = r#"<interface><object id="button" web:href="/some/page" /></interface>"#;
-        let def = Definition::new(body.as_bytes())?;
+        let def = Definition::new(body.to_string())?;
         assert_eq!(
             def.hrefs,
             HashMap::from([(String::from("button"), String::from("/some/page"))])

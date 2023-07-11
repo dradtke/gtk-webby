@@ -1,3 +1,5 @@
+use glib::clone;
+use gtk::glib;
 use gtk::prelude::*;
 use sourceview5::prelude::*;
 use sourceview5::{Buffer, LanguageManager, StyleSchemeManager, View};
@@ -10,9 +12,16 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(parent: &impl IsA<gtk::Window>) -> Self {
+    pub fn new<F: Fn(String) -> () + 'static>(
+        parent: &impl IsA<gtk::Window>,
+        starting_text: Option<String>,
+        render_callback: F,
+    ) -> Self {
         let buffer = Buffer::new(None);
         buffer.set_highlight_syntax(true);
+        if let Some(starting_text) = starting_text {
+            buffer.set_text(&starting_text);
+        }
 
         if let Some(ref language) = LanguageManager::new().language("xml") {
             buffer.set_language(Some(language));
@@ -31,7 +40,11 @@ impl Editor {
         view.set_vexpand(true);
 
         let render = gtk::Button::with_label("Render");
-        render.connect_clicked(|_| println!("Rendering from source editor"));
+        render.connect_clicked(clone!(@weak view => move |_| {
+            let buffer = view.buffer();
+            let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+            render_callback(text.to_string());
+        }));
 
         let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         container.append(&view);

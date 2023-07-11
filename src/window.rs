@@ -26,6 +26,7 @@ pub struct State {
     pub location: String,
     pub http_client: reqwest::blocking::Client,
     pub builder: gtk::Builder,
+    pub ui_definition: Option<crate::ui::Definition>,
     user_styles: Option<gtk::CssProvider>,
 }
 
@@ -106,6 +107,7 @@ impl Window {
             http_client,
             builder,
             user_styles,
+            ui_definition: None,
         };
         let window = Rc::new(Self {
             app_window,
@@ -161,7 +163,13 @@ impl Window {
         let open_source_editor = gio::SimpleAction::new("open-source-editor", None);
         open_source_editor.connect_activate(
             clone!(@weak self as window => move |_action, _param| {
-                let editor = crate::editor::Editor::new(&window.app_window);
+                let app_window = window.app_window.clone();
+                let starting_text = window.state.borrow().ui_definition.as_ref().map(|def| def.source.clone());
+                let editor = crate::editor::Editor::new(&app_window, starting_text, move |text| {
+                    if let Err(err) = window.clone().render_gtk(text) {
+                        println!("Failed to render: {}", err);
+                    }
+                });
                 editor.show();
             }),
         );
@@ -177,6 +185,7 @@ impl Window {
         self.info_bar.set_revealed(false);
 
         //println!("Navigating to: {}", &location);
+        self.state.borrow_mut().ui_definition = None;
         self.status_label
             .set_label(&format!("Loading {}...", &location));
         let request = self.state.borrow().http_client.get(&location);
@@ -211,9 +220,9 @@ impl Window {
                 }
 
                 match mime_type.type_() {
-                    mime::TEXT if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
-                    mime::TEXT => window.clone().render_text(response),
-                    mime::APPLICATION if mime_type.subtype() == "gtk" => window.clone().render_gtk(response),
+                    mime::TEXT if mime_type.subtype() == "gtk" => window.clone().render_gtk(Self::read_all(response)?),
+                    mime::TEXT => window.clone().render_text(Self::read_all(response)?),
+                    mime::APPLICATION if mime_type.subtype() == "gtk" => window.clone().render_gtk(Self::read_all(response)?),
                     _ => Err(crate::error::Error::UnsupportedContentTypeError(mime_type.essence_str().to_string())),
                 }
             };
@@ -231,17 +240,21 @@ impl Window {
         }));
     }
 
-    fn render_text<R: Read>(self: Rc<Self>, mut r: R) -> crate::Result<()> {
+    fn read_all<R: Read>(mut r: R) -> std::io::Result<String> {
         let mut s = String::new();
         r.read_to_string(&mut s)?;
+        Ok(s)
+    }
+
+    fn render_text(self: Rc<Self>, s: String) -> crate::Result<()> {
         self.content.set_child(Some(&gtk::TextView::with_buffer(
             &gtk::TextBuffer::builder().text(&s).build(),
         )));
         Ok(())
     }
 
-    fn render_gtk<R: Read>(self: Rc<Self>, r: R) -> crate::Result<()> {
-        let def = crate::ui::Definition::new(r)?;
+    fn render_gtk(self: Rc<Self>, s: String) -> crate::Result<()> {
+        let ui_definition = crate::ui::Definition::new(s)?;
 
         // Remove existing user-requested CSS styling, if there is any.
         if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
@@ -250,9 +263,9 @@ impl Window {
         self.state.borrow_mut().user_styles = None;
 
         // If the new page has styles, apply them.
-        if !def.styles.is_empty() {
+        if !ui_definition.styles.is_empty() {
             let user_styles = gtk::CssProvider::new();
-            user_styles.load_from_data(def.styles.as_str());
+            user_styles.load_from_data(ui_definition.styles.as_str());
             gtk::style_context_add_provider_for_display(
                 &self.display(),
                 &user_styles,
@@ -264,12 +277,16 @@ impl Window {
         // Set the window title to that requested by the user, or the location if there was
         // none.
         self.app_window.set_title(Some(
-            &def.title.unwrap_or(self.state.borrow().location.clone()),
+            &ui_definition
+                .title
+                .as_ref()
+                .map(|s| s.clone())
+                .unwrap_or(self.state.borrow().location.clone()),
         ));
 
         // Construct the GTK builder from the UI definition.
         let builder = gtk::Builder::new();
-        builder.add_from_string(&def.buildable)?;
+        builder.add_from_string(&ui_definition.buildable)?;
 
         // Find the "body" widget, and set it as the window's content.
         match builder.object::<gtk::Widget>("body") {
@@ -278,7 +295,7 @@ impl Window {
         }
 
         // Set up callbacks for any href attributes.
-        for (object_id, target) in &def.hrefs {
+        for (object_id, target) in &ui_definition.hrefs {
             let window = self.clone();
             let target = target.clone();
             match builder.object::<gtk::Widget>(object_id) {
@@ -298,9 +315,11 @@ impl Window {
         self.state.borrow_mut().builder = builder;
 
         // Run any defined scripts.
-        for script in &def.scripts {
+        for script in &ui_definition.scripts {
             script.execute(&self);
         }
+
+        self.state.borrow_mut().ui_definition = Some(ui_definition);
 
         // Clean up any old Lua registry values, such as now-unreferenced callbacks.
         self.state.borrow().globals.lua.expire_registry_values();
