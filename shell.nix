@@ -8,6 +8,7 @@
 pkgs.mkShell {
 	buildInputs = with pkgs; [
 		gtk4
+		gtksourceview5
 		pkg-config
 		lua5_4
 		rustc

@@ -1309,6 +1309,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "sourceview5"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee960607b1f7fda934dce68e76e925989ebe186ac04d6ab5ea9ce93e13835c03"
+dependencies = [
+ "bitflags",
+ "futures-channel",
+ "futures-core",
+ "gdk-pixbuf",
+ "gdk4",
+ "gio",
+ "glib",
+ "gtk4",
+ "libc",
+ "pango",
+ "sourceview5-sys",
+]
+
+[[package]]
+name = "sourceview5-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7a23462cd3d696199b56317d35e69b240d655b8c70c12bd8f443b672313776c"
+dependencies = [
+ "gdk-pixbuf-sys",
+ "gdk4-sys",
+ "gio-sys",
+ "glib-sys",
+ "gobject-sys",
+ "gtk4-sys",
+ "libc",
+ "pango-sys",
+ "system-deps",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1683,6 +1719,7 @@ dependencies = [
  "mlua",
  "quick-xml",
  "reqwest",
+ "sourceview5",
 ]
 
 [[package]]
