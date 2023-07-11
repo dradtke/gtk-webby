@@ -325,10 +325,15 @@ impl LuaUserData for Widget {
         methods.add_method(
             super::GET_PROPERTY,
             |_, this, property_name: String| match this.widget.find_property(&property_name) {
-                Some(prop) => Ok(glib_to_lua(this.lua, this.widget.property_value(prop.name()))),
+                Some(prop) => Ok(glib_to_lua(
+                    this.lua,
+                    this.widget.property_value(prop.name()),
+                )),
                 None => {
                     println!("Property '{}' not found", &property_name);
-                    Err(LuaError::ExternalError(Arc::new(crate::error::Error::PropertyNotFound(property_name))))
+                    Err(LuaError::ExternalError(Arc::new(
+                        crate::error::Error::PropertyNotFound(property_name),
+                    )))
                 }
             },
         );
@@ -351,11 +356,12 @@ impl LuaUserData for Widget {
 
                 if let Err(err) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     this.widget.set_property_from_value(&property_name, &value);
-                }))
-                {
+                })) {
                     let s = format!("Failed to set property '{}': {:?}", &property_name, err);
                     println!("{}", &s);
-                    return Err(LuaError::ExternalError(Arc::new(crate::error::Error::Any(s))));
+                    return Err(LuaError::ExternalError(Arc::new(crate::error::Error::Any(
+                        s,
+                    ))));
                 }
 
                 Ok(())

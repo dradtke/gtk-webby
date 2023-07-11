@@ -3,8 +3,8 @@ use std::io::Read;
 use std::rc::Rc;
 
 use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
-use gtk::{gdk, glib};
 use gtk::prelude::*;
+use gtk::{gdk, gio, glib};
 
 pub struct Window {
     #[allow(dead_code)]
@@ -153,6 +153,19 @@ impl Window {
                 let location = window.address_entry.text().to_string();
                 window.go(location);
             }));
+
+        window.define_actions();
+    }
+
+    fn define_actions(self: Rc<Self>) {
+        let open_source_editor = gio::SimpleAction::new("open-source-editor", None);
+        open_source_editor.connect_activate(
+            clone!(@weak self as window => move |_action, _param| {
+                let editor = crate::editor::Editor::new(&window.app_window);
+                editor.show();
+            }),
+        );
+        self.app_window.add_action(&open_source_editor);
     }
 
     fn refresh(self: Rc<Self>) {

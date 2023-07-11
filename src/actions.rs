@@ -11,3 +11,5 @@ pub fn about(_action: &gio::SimpleAction, _param: Option<&glib::Variant>) {
         .build()
         .set_visible(true);
 }
+
+pub fn open_source_editor(_action: &gio::SimpleAction, _param: Option<&glib::Variant>) {}

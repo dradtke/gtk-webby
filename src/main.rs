@@ -1,8 +1,6 @@
 use glib::clone;
-use gtk::gdk;
-use gtk::gio;
-use gtk::glib;
 use gtk::prelude::*;
+use gtk::{gdk, gio, glib};
 use mlua::prelude::*;
 use std::cell::RefCell;
 use std::fs::File;
@@ -10,6 +8,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 mod actions;
+mod editor;
 mod error;
 mod headers;
 mod script;
@@ -47,7 +46,7 @@ fn main() {
         Some("path/to/cert.pem"),
     );
 
-    define_actions(&app);
+    define_app_actions(&app);
 
     let root_certs = Rc::new(RefCell::new(vec![]));
 
@@ -98,7 +97,7 @@ fn main() {
     app.run();
 }
 
-fn define_actions(app: &gtk::Application) {
+fn define_app_actions(app: &gtk::Application) {
     let quit = gio::SimpleAction::new("quit", None);
     {
         let app = app.clone();
@@ -113,7 +112,10 @@ fn define_actions(app: &gtk::Application) {
 
 fn build_menu() -> gio::Menu {
     let file = gio::Menu::new();
+    let open_source_editor =
+        gio::MenuItem::new(Some("Open Source Editor"), Some("win.open-source-editor"));
     let quit = gio::MenuItem::new(Some("Quit"), Some("app.quit"));
+    file.append_item(&open_source_editor);
     file.append_item(&quit);
 
     let help = gio::Menu::new();
