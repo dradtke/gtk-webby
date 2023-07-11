@@ -324,11 +324,11 @@ impl LuaUserData for Widget {
 
         methods.add_method(
             super::GET_PROPERTY,
-            |_, this, property_name: String| match this.widget.try_property_value(&property_name) {
-                Ok(value) => Ok(glib_to_lua(this.lua, value)),
-                Err(err) => {
-                    println!("Failed to get property '{}': {}", &property_name, err);
-                    Err(LuaError::ExternalError(Arc::new(err)))
+            |_, this, property_name: String| match this.widget.find_property(&property_name) {
+                Some(prop) => Ok(glib_to_lua(this.lua, this.widget.property_value(prop.name()))),
+                None => {
+                    println!("Property '{}' not found", &property_name);
+                    Err(LuaError::ExternalError(Arc::new(crate::error::Error::PropertyNotFound(property_name))))
                 }
             },
         );
@@ -349,12 +349,13 @@ impl LuaUserData for Widget {
                     }
                 };
 
-                if let Err(err) = this
-                    .widget
-                    .try_set_property_from_value(&property_name, &value)
+                if let Err(err) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    this.widget.set_property_from_value(&property_name, &value);
+                }))
                 {
-                    println!("Failed to get property '{}': {}", &property_name, err);
-                    return Err(LuaError::ExternalError(Arc::new(err)));
+                    let s = format!("Failed to set property '{}': {:?}", &property_name, err);
+                    println!("{}", &s);
+                    return Err(LuaError::ExternalError(Arc::new(crate::error::Error::Any(s))));
                 }
 
                 Ok(())
@@ -364,11 +365,13 @@ impl LuaUserData for Widget {
         methods.add_method(super::GET_TEXT, |_, this, ()| {
             // TODO: work for more than Entry widgets?
             if let Ok(entry) = this.widget.clone().downcast::<gtk::Entry>() {
-                return Ok(entry.buffer().text());
+                let text = entry.buffer().text();
+                Ok(text.to_string())
+            } else {
+                Err(LuaError::ExternalError(Arc::new(
+                    super::Error::UnsupportedOperation,
+                )))
             }
-            Err(LuaError::ExternalError(Arc::new(
-                super::Error::UnsupportedOperation,
-            )))
         });
 
         methods.add_method(super::SET_SENSITIVE, |_, this, sensitive: bool| {

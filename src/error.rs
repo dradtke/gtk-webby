@@ -3,6 +3,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
+    Any(String),
     IoError(std::io::Error),
     HttpError(reqwest::Error),
     GlibError(glib::error::Error),
@@ -15,11 +16,13 @@ pub enum Error {
     NoContentTypeError,
     UnsupportedCharsetError(String),
     UnsupportedContentTypeError(String),
+    PropertyNotFound(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Error::Any(err) => write!(f, "{}", err),
             Error::IoError(err) => write!(f, "io error: {}", err),
             Error::HttpError(err) => write!(f, "http error: {}", err),
             Error::GlibError(err) => write!(f, "glib error: {}", err),
@@ -38,6 +41,7 @@ impl fmt::Display for Error {
             Error::UnsupportedContentTypeError(content_type) => {
                 write!(f, "unsupported Content-Type: {}", content_type)
             }
+            Error::PropertyNotFound(name) => write!(f, "Property not found: {}", &name),
         }
     }
 }

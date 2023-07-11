@@ -3,7 +3,7 @@ use std::io::Read;
 use std::rc::Rc;
 
 use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
-use gtk::glib;
+use gtk::{gdk, glib};
 use gtk::prelude::*;
 
 pub struct Window {
@@ -232,16 +232,16 @@ impl Window {
 
         // Remove existing user-requested CSS styling, if there is any.
         if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
-            gtk::StyleContext::remove_provider_for_display(&self.app_window.display(), user_styles);
+            gtk::style_context_remove_provider_for_display(&self.display(), user_styles);
         }
         self.state.borrow_mut().user_styles = None;
 
         // If the new page has styles, apply them.
         if !def.styles.is_empty() {
             let user_styles = gtk::CssProvider::new();
-            user_styles.load_from_data(def.styles.as_bytes());
-            gtk::StyleContext::add_provider_for_display(
-                &self.app_window.display(),
+            user_styles.load_from_data(def.styles.as_str());
+            gtk::style_context_add_provider_for_display(
+                &self.display(),
                 &user_styles,
                 gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
@@ -313,5 +313,9 @@ impl Window {
             .transient_for(&self.app_window)
             .build();
         dialog.present();
+    }
+
+    fn display(&self) -> gdk::Display {
+        RootExt::display(&self.app_window)
     }
 }

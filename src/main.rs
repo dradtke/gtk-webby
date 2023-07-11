@@ -75,9 +75,9 @@ fn main() {
 
     app.connect_startup(|app| {
         let provider = gtk::CssProvider::new();
-        provider.load_from_data(include_bytes!("style.css"));
+        provider.load_from_data(include_str!("style.css"));
 
-        gtk::StyleContext::add_provider_for_display(
+        gtk::style_context_add_provider_for_display(
             &gdk::Display::default().expect("could not connect to a display"),
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
