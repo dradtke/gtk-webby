@@ -4,6 +4,16 @@ use gtk::prelude::*;
 use sourceview5::prelude::*;
 use sourceview5::{Buffer, LanguageManager, StyleSchemeManager, View};
 
+const PLACEHOLDER: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <!--
+    Widget definitions go here. One widget must have the id "body",
+    which indicates the one that should be rendered.
+  -->
+</interface>
+"#;
+
 // Inspired by https://gitlab.gnome.org/World/Rust/sourceview5-rs/-/blob/main/demo/src/main.rs
 
 pub struct Editor {
@@ -19,8 +29,9 @@ impl Editor {
     ) -> Self {
         let buffer = Buffer::new(None);
         buffer.set_highlight_syntax(true);
-        if let Some(starting_text) = starting_text {
-            buffer.set_text(&starting_text);
+        match starting_text {
+            Some(text) => buffer.set_text(&text),
+            None => buffer.set_text(&PLACEHOLDER),
         }
 
         if let Some(ref language) = LanguageManager::new().language("xml") {
@@ -57,7 +68,10 @@ impl Editor {
             .child(&container)
             .build();
 
-        Editor { window, _view: view }
+        Editor {
+            window,
+            _view: view,
+        }
     }
 
     pub fn show(&self) {
