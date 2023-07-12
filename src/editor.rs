@@ -8,7 +8,7 @@ use sourceview5::{Buffer, LanguageManager, StyleSchemeManager, View};
 
 pub struct Editor {
     window: gtk::Window,
-    view: View,
+    _view: View,
 }
 
 impl Editor {
@@ -36,8 +36,8 @@ impl Editor {
         view.set_show_line_numbers(true);
         view.set_highlight_current_line(true);
         view.set_tab_width(4);
-        view.set_hexpand(true);
         view.set_vexpand(true);
+        view.set_top_margin(6);
 
         let render = gtk::Button::with_label("Render");
         render.connect_clicked(clone!(@weak view => move |_| {
@@ -57,7 +57,7 @@ impl Editor {
             .child(&container)
             .build();
 
-        Editor { window, view }
+        Editor { window, _view: view }
     }
 
     pub fn show(&self) {
