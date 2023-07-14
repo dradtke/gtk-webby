@@ -27,6 +27,7 @@ pub struct State {
     pub http_client: reqwest::blocking::Client,
     pub builder: gtk::Builder,
     pub ui_definition: Option<crate::ui::Definition>,
+    history: crate::history::History,
     user_styles: Option<gtk::CssProvider>,
 }
 
@@ -34,8 +35,14 @@ impl Window {
     pub fn new(app: &gtk::Application, globals: &'static crate::Globals) {
         // Icon names are documented here: https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
         let back_button = gtk::Button::from_icon_name("go-previous");
+        back_button.set_sensitive(false);
+
         let forward_button = gtk::Button::from_icon_name("go-next");
+        forward_button.set_sensitive(false);
+
         let refresh_button = gtk::Button::from_icon_name("view-refresh");
+        refresh_button.set_sensitive(false);
+
         let bookmark_button = gtk::Button::from_icon_name("bookmark-new"); // no idea where this one is documented
 
         let address_entry = gtk::Entry::new();
@@ -107,6 +114,7 @@ impl Window {
             http_client,
             builder,
             user_styles,
+            history: crate::history::History::new(),
             ui_definition: None,
         };
         let window = Rc::new(Self {
@@ -128,19 +136,21 @@ impl Window {
         window
             .back_button
             .connect_clicked(clone!(@weak window => move |_| {
-                eprintln!("TODO: go back");
+                let location = window.state.borrow_mut().history.back();
+                window.go(location, false);
             }));
 
         window
             .forward_button
             .connect_clicked(clone!(@weak window => move |_| {
-                eprintln!("TODO: go forward");
+                let location = window.state.borrow_mut().history.forward();
+                window.go(location, false);
             }));
 
         window
             .refresh_button
             .connect_clicked(clone!(@weak window => move |_| {
-                window.refresh();
+                window.reload();
             }));
 
         window
@@ -153,7 +163,7 @@ impl Window {
             .address_entry
             .connect_activate(clone!(@weak window => move |_| {
                 let location = window.address_entry.text().to_string();
-                window.go(location);
+                window.go(location, true);
             }));
 
         window.define_actions();
@@ -176,12 +186,8 @@ impl Window {
         self.app_window.add_action(&open_source_editor);
     }
 
-    fn refresh(self: Rc<Self>) {
-        let location = self.state.borrow().location.clone();
-        self.go(location);
-    }
-
-    fn go(self: Rc<Self>, location: String) {
+    fn go(self: Rc<Self>, location: String, modify_history: bool) {
+        self.address_entry.set_text(&location);
         self.info_bar.set_revealed(false);
 
         //println!("Navigating to: {}", &location);
@@ -233,7 +239,15 @@ impl Window {
                 window.info_bar.set_message_type(gtk::MessageType::Error);
                 window.info_bar.set_revealed(true);
                 println!("Navigation error: {}", err);
+            } else {
+                if modify_history {
+                    self.state.borrow_mut().history.push(location.clone());
+                }
             }
+
+            self.back_button.set_sensitive(self.state.borrow().history.can_go_back());
+            self.forward_button.set_sensitive(self.state.borrow().history.can_go_forward());
+            self.refresh_button.set_sensitive(true);
 
             window.status_label.set_text("");
             Continue(false)
@@ -330,12 +344,12 @@ impl Window {
     fn href(self: Rc<Self>, target: &String) {
         let location = crate::util::absolutize_url(&self.state.borrow().location, target);
         self.address_entry.set_text(&location);
-        self.go(location);
+        self.go(location, true);
     }
 
     pub fn reload(self: Rc<Self>) {
         let location = self.state.borrow().location.clone();
-        self.go(location);
+        self.go(location, false);
     }
 
     pub fn alert(self: Rc<Self>, text: &str) {

@@ -11,6 +11,7 @@ mod actions;
 mod editor;
 mod error;
 mod headers;
+mod history;
 mod script;
 mod ui;
 mod util;
