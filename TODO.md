@@ -6,6 +6,7 @@
 - ListModel/TreeModel support?
 - Bookmarks
 - Cookie management
+- Support rendering real web pages via webkit2gtk, depending on the returned Content-Type
 
 Maybe:
 - Put address bar into header?

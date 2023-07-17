@@ -1,4 +1,5 @@
-use glib::clone;
+use glib::{clone, ExitCode};
+use gtk::gio::Cancellable;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use mlua::prelude::*;
@@ -24,18 +25,15 @@ pub struct Globals {
     lua: Lua,
 }
 
-fn load_cert(path: &str) -> anyhow::Result<reqwest::tls::Certificate> {
+fn load_cert(path: &str) -> Result<reqwest::tls::Certificate> {
     let mut buf = Vec::new();
     File::open(path)?.read_to_end(&mut buf)?;
     Ok(reqwest::Certificate::from_pem(&buf)?)
 }
 
-fn main() {
+fn main() -> Result<ExitCode> {
     let app = gtk::Application::builder()
         .application_id("com.damienradtke.webby")
-        // For some reason, this results in an assertion error that the application isn't
-        // registered
-        //.menubar(&build_menu())
         .build();
 
     app.add_main_option(
@@ -47,11 +45,21 @@ fn main() {
         Some("path/to/cert.pem"),
     );
 
-    define_app_actions(&app);
+    app.add_main_option(
+        "watch",
+        glib::Char::from(0),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::StringArray,
+        "Watch a file or directory for changes, and reload the current page when detected",
+        Some("path/to/file.ui"),
+    );
 
     let root_certs = Rc::new(RefCell::new(vec![]));
+    let file_monitors = Rc::new(RefCell::new(vec![]));
 
-    app.connect_handle_local_options(clone!(@strong root_certs => move |_app, dict| {
+    app.connect_handle_local_options(clone!(@strong root_certs => move |app, dict| {
+        println!("app handle local options");
+
         match dict.lookup::<Vec<String>>("add-root-cert") {
             Ok(Some(paths)) => {
                 for path in paths {
@@ -70,10 +78,24 @@ fn main() {
             Ok(None) => (),
             Err(err) => eprintln!("{}", err),
         }
+
+        match dict.lookup::<Vec<String>>("watch") {
+            Ok(Some(paths)) => {
+                for path in paths {
+                    if let Some(monitor) = watch_path(app, &path) {
+                        file_monitors.borrow_mut().push(monitor);
+                    }
+                }
+            },
+            Ok(None) => (),
+            Err(err) => eprintln!("{}", err),
+        }
         -1
     }));
 
     app.connect_startup(|app| {
+        println!("app startup");
+
         let provider = gtk::CssProvider::new();
         provider.load_from_data(include_str!("style.css"));
 
@@ -83,10 +105,15 @@ fn main() {
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
 
+        if let Err(err) = app.register(Cancellable::NONE) {
+            println!("Failed to register appplication: {}", err);
+        }
         app.set_menubar(Some(&build_menu()));
+        define_app_actions(&app);
     });
 
     app.connect_activate(move |app| {
+        println!("app activate");
         // glib callbacks need referenced values to be 'static.
         let globals = Box::leak(Box::new(Globals {
             root_certs: root_certs.borrow().clone(),
@@ -95,7 +122,7 @@ fn main() {
         window::Window::new(app, globals);
     });
 
-    app.run();
+    Ok(app.run())
 }
 
 fn define_app_actions(app: &gtk::Application) {
@@ -127,4 +154,32 @@ fn build_menu() -> gio::Menu {
     menu.append_submenu(Some("File"), &file);
     menu.append_submenu(Some("Help"), &help);
     menu
+}
+
+fn watch_path(app: &gtk::Application, path: &str) -> Option<gio::FileMonitor> {
+    let file = gio::File::for_path(path);
+    let monitor = match file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, Cancellable::NONE) {
+        Ok(monitor) => monitor,
+        Err(err) => {
+            println!("Error creating monitor for path '{}': {}", path, err);
+            return None;
+        },
+    };
+    println!("Watching path for changes: {}", path);
+    let app = app.clone();
+    monitor.connect_changed(move |_monitor, file, _other_file, event| {
+        match event {
+            gio::FileMonitorEvent::AttributeChanged | gio::FileMonitorEvent::Changed => {
+                println!("{} changed", &file);
+                // TODO: figure out how to notify existing windows
+                /*
+                for app_window in app.windows() {
+                    let window = app_window.as_
+                }
+                */
+            },
+            _ => (),
+        }
+    });
+    Some(monitor)
 }

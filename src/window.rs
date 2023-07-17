@@ -190,6 +190,8 @@ impl Window {
         self.address_entry.set_text(&location);
         self.info_bar.set_revealed(false);
 
+        // TODO: support file://
+
         //println!("Navigating to: {}", &location);
         self.state.borrow_mut().ui_definition = None;
         self.status_label

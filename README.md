@@ -65,5 +65,4 @@ Webby supports Lua scripting by embedding code within a `<web:script type="lua">
 | `remove_css_class(class: String)` | Remove a CSS class |
 | `set_css_classes(classes: Array<String>)` | Set a list of CSS classes |
  
-
 <!-- vim: set tw=100: -->
