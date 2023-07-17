@@ -54,44 +54,47 @@ fn main() -> Result<ExitCode> {
         Some("path/to/file.ui"),
     );
 
+    let windows = Rc::new(RefCell::new(vec![]));
     let root_certs = Rc::new(RefCell::new(vec![]));
     let file_monitors = Rc::new(RefCell::new(vec![]));
 
-    app.connect_handle_local_options(clone!(@strong root_certs => move |app, dict| {
-        println!("app handle local options");
+    app.connect_handle_local_options(
+        clone!(@strong windows, @strong root_certs => move |_app, dict| {
+            println!("app handle local options");
 
-        match dict.lookup::<Vec<String>>("add-root-cert") {
-            Ok(Some(paths)) => {
-                for path in paths {
-                    match load_cert(&path) {
-                        Ok(cert) => {
-                            println!("Loaded root cert {}", &path);
-                            root_certs.borrow_mut().push(cert);
-                        },
-                        Err(err) => {
-                            // TODO: use glib's logging facilities?
-                            println!("Failed to load root cert {}: {}", &path, &err);
-                        },
+            match dict.lookup::<Vec<String>>("add-root-cert") {
+                Ok(Some(paths)) => {
+                    for path in paths {
+                        match load_cert(&path) {
+                            Ok(cert) => {
+                                println!("Loaded root cert {}", &path);
+                                root_certs.borrow_mut().push(cert);
+                            },
+                            Err(err) => {
+                                // TODO: use glib's logging facilities?
+                                println!("Failed to load root cert {}: {}", &path, &err);
+                            },
+                        }
                     }
-                }
-            },
-            Ok(None) => (),
-            Err(err) => eprintln!("{}", err),
-        }
+                },
+                Ok(None) => (),
+                Err(err) => eprintln!("{}", err),
+            }
 
-        match dict.lookup::<Vec<String>>("watch") {
-            Ok(Some(paths)) => {
-                for path in paths {
-                    if let Some(monitor) = watch_path(app, &path) {
-                        file_monitors.borrow_mut().push(monitor);
+            match dict.lookup::<Vec<String>>("watch") {
+                Ok(Some(paths)) => {
+                    for path in paths {
+                        if let Some(monitor) = watch_path(windows.clone(), &path) {
+                            file_monitors.borrow_mut().push(monitor);
+                        }
                     }
-                }
-            },
-            Ok(None) => (),
-            Err(err) => eprintln!("{}", err),
-        }
-        -1
-    }));
+                },
+                Ok(None) => (),
+                Err(err) => eprintln!("{}", err),
+            }
+            -1
+        }),
+    );
 
     app.connect_startup(|app| {
         println!("app startup");
@@ -119,7 +122,8 @@ fn main() -> Result<ExitCode> {
             root_certs: root_certs.borrow().clone(),
             lua: Lua::new(),
         }));
-        window::Window::new(app, globals);
+        let window = window::Window::new(app, globals);
+        windows.borrow_mut().push(window);
     });
 
     Ok(app.run())
@@ -156,30 +160,29 @@ fn build_menu() -> gio::Menu {
     menu
 }
 
-fn watch_path(app: &gtk::Application, path: &str) -> Option<gio::FileMonitor> {
+fn watch_path(
+    windows: Rc<RefCell<Vec<Rc<window::Window>>>>,
+    path: &str,
+) -> Option<gio::FileMonitor> {
     let file = gio::File::for_path(path);
     let monitor = match file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, Cancellable::NONE) {
         Ok(monitor) => monitor,
         Err(err) => {
             println!("Error creating monitor for path '{}': {}", path, err);
             return None;
-        },
+        }
     };
     println!("Watching path for changes: {}", path);
-    let app = app.clone();
-    monitor.connect_changed(move |_monitor, file, _other_file, event| {
-        match event {
-            gio::FileMonitorEvent::AttributeChanged | gio::FileMonitorEvent::Changed => {
-                println!("{} changed", &file);
-                // TODO: figure out how to notify existing windows
-                /*
-                for app_window in app.windows() {
-                    let window = app_window.as_
-                }
-                */
-            },
-            _ => (),
+    monitor.connect_changed(move |_monitor, file, _other_file, event| match event {
+        gio::FileMonitorEvent::AttributeChanged | gio::FileMonitorEvent::Changed => {
+            if let Some(path) = file.path() {
+                println!("{:?} changed", &path);
+            }
+            for window in windows.borrow().iter() {
+                window.clone().reload();
+            }
         }
+        _ => (),
     });
     Some(monitor)
 }

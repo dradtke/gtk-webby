@@ -32,7 +32,7 @@ pub struct State {
 }
 
 impl Window {
-    pub fn new(app: &gtk::Application, globals: &'static crate::Globals) {
+    pub fn new(app: &gtk::Application, globals: &'static crate::Globals) -> Rc<Self> {
         // Icon names are documented here: https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
         let back_button = gtk::Button::from_icon_name("go-previous");
         back_button.set_sensitive(false);
@@ -167,9 +167,10 @@ impl Window {
             }));
 
         window.define_actions();
+        window
     }
 
-    fn define_actions(self: Rc<Self>) {
+    fn define_actions(self: &Rc<Self>) {
         let open_source_editor = gio::SimpleAction::new("open-source-editor", None);
         open_source_editor.connect_activate(
             clone!(@weak self as window => move |_action, _param| {
@@ -351,7 +352,9 @@ impl Window {
 
     pub fn reload(self: Rc<Self>) {
         let location = self.state.borrow().location.clone();
-        self.go(location, false);
+        if !location.is_empty() {
+            self.go(location, false);
+        }
     }
 
     pub fn alert(self: Rc<Self>, text: &str) {
