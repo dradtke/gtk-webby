@@ -5,6 +5,7 @@ use std::fmt;
 pub enum Error {
     Any(String),
     IoError(std::io::Error),
+    AddrParseError(std::net::AddrParseError),
     HttpError(reqwest::Error),
     GlibError(glib::error::Error),
     XmlError(quick_xml::Error),
@@ -24,6 +25,7 @@ impl fmt::Display for Error {
         match self {
             Error::Any(err) => write!(f, "{}", err),
             Error::IoError(err) => write!(f, "io error: {}", err),
+            Error::AddrParseError(err) => write!(f, "address parse error: {}", err),
             Error::HttpError(err) => write!(f, "http error: {}", err),
             Error::GlibError(err) => write!(f, "glib error: {}", err),
             Error::XmlError(err) => write!(f, "xml error: {}", err),
@@ -51,6 +53,12 @@ impl std::error::Error for Error {}
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Error {
         Error::IoError(err)
+    }
+}
+
+impl From<std::net::AddrParseError> for Error {
+    fn from(err: std::net::AddrParseError) -> Error {
+        Error::AddrParseError(err)
     }
 }
 

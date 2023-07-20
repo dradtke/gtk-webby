@@ -12,3 +12,7 @@ quick-xml = "0.29"
 reqwest = { version = "0.11", features = ["blocking", "cookies"] }
 mime = "0.3"
 sourceview5 = "0.6.1"
+tiny_http = "0.11"
+webdriver = "0.48"
+env_logger = "0.10" # for seeing messages from webdriver
+url = "2.3"

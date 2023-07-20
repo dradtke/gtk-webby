@@ -16,6 +16,7 @@ mod history;
 mod script;
 mod ui;
 mod util;
+mod webdriver;
 mod window;
 
 type Result<T> = core::result::Result<T, error::Error>;
@@ -32,6 +33,8 @@ fn load_cert(path: &str) -> Result<reqwest::tls::Certificate> {
 }
 
 fn main() -> Result<ExitCode> {
+    env_logger::init();
+
     let app = gtk::Application::builder()
         .application_id("com.damienradtke.webby")
         .build();
@@ -54,9 +57,19 @@ fn main() -> Result<ExitCode> {
         Some("path/to/file.ui"),
     );
 
+    app.add_main_option(
+        "bind-webdriver",
+        glib::Char::from(0),
+        glib::OptionFlags::NONE,
+        glib::OptionArg::String,
+        "Listen for WebDriver requests on the provided address",
+        Some("0.0.0.0:8000"),
+    );
+
     let windows = Rc::new(RefCell::new(vec![]));
     let root_certs = Rc::new(RefCell::new(vec![]));
     let file_monitors = Rc::new(RefCell::new(vec![]));
+    let webdriver_listeners = Rc::new(RefCell::new(vec![]));
 
     app.connect_handle_local_options(
         clone!(@strong windows, @strong root_certs => move |_app, dict| {
@@ -92,6 +105,21 @@ fn main() -> Result<ExitCode> {
                 Ok(None) => (),
                 Err(err) => eprintln!("{}", err),
             }
+
+            match dict.lookup::<String>("bind-webdriver") {
+                Ok(Some(addr)) => {
+                    match crate::webdriver::run(&addr) {
+                        Ok(listener) => {
+                            println!("Listening for WebDriver requests on {}", &addr);
+                            webdriver_listeners.borrow_mut().push(listener);
+                        },
+                        Err(err) => println!("Error starting WebDriver listener: {}", err),
+                    }
+                },
+                Ok(None) => (),
+                Err(err) => eprintln!("{}", err),
+            }
+
             -1
         }),
     );
