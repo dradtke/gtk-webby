@@ -8,10 +8,10 @@ pub fn main() {
         alwaysMatch: Map::new(),
         firstMatch: vec![],
     });
-    println!("started session: {}", &session_id);
+
+    client.get(&session_id, "http://localhost:8000/");
     
     client.delete_session(&session_id);
-    println!("deleted session: {}", &session_id);
 }
 
 pub struct Client {
@@ -62,6 +62,12 @@ impl Client {
         let response: Map<String, Value> = self.post("/session", params);
         let session_id = response.get("value").unwrap().get("sessionId").unwrap().as_str().unwrap();
         session_id.into()
+    }
+
+    pub fn get<S: Into<String>>(&self, session_id: &str, url: S) {
+        let params = webdriver::command::GetParameters{url: url.into()};
+        let response: Map<String, Value> = self.post(&format!("/session/{}/url", &session_id), params);
+        //println!("get response: {:?}", &response);
     }
 
     pub fn delete_session(&self, session_id: &str) {

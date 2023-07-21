@@ -5,11 +5,10 @@ use glib::signal::SignalHandlerId;
 use glib::{Continue, MainContext, PRIORITY_DEFAULT};
 use gtk::glib;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 
-pub fn init(window: Rc<crate::window::Window>) {
-    let globals = window.state.borrow().globals;
+pub fn init(window: Arc<crate::window::Window>) {
+    let globals = window.state.lock().unwrap().globals;
     let lua = &globals.lua;
 
     let r#do = move || -> LuaResult<()> {
@@ -33,7 +32,7 @@ pub fn init(window: Rc<crate::window::Window>) {
 
 fn global_functions(
     lua: &'static Lua,
-    window: Rc<crate::window::Window>,
+    window: Arc<crate::window::Window>,
 ) -> LuaResult<HashMap<&'static str, LuaFunction>> {
     let mut functions = HashMap::new();
 
@@ -53,7 +52,7 @@ fn global_functions(
         functions.insert(
             super::FIND_WIDGET,
             lua.create_function(move |_, id: String| {
-                match window.state.borrow().builder.object::<gtk::Widget>(&id) {
+                match window.state.lock().unwrap().builder.object::<gtk::Widget>(&id) {
                     // TODO: need to figure out how to drop this widget after it's no longer visible
                     Some(widget) => Ok(Some(Widget::new(lua, widget))),
                     None => {
@@ -85,11 +84,11 @@ fn global_functions(
                         form_values.insert(key, value);
                     }
 
-                    let http_client = &window.state.borrow().http_client;
+                    let http_client = &window.state.lock().unwrap().http_client;
                     let response = match http_client
                         .request(
                             method,
-                            crate::util::absolutize_url(&window.state.borrow().location, &action),
+                            crate::util::absolutize_url(&window.state.lock().unwrap().location, &action),
                         )
                         .form(&form_values)
                         .send()
@@ -136,7 +135,7 @@ fn global_functions(
 
                     let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
 
-                    let request = window.state.borrow().http_client.request(method, url);
+                    let request = window.state.lock().unwrap().http_client.request(method, url);
                     std::thread::spawn(move || {
                         let response_result = request.send();
                         if let Err(err) = sender.send(response_result) {
@@ -438,7 +437,7 @@ impl LuaUserData for Response {
 #[allow(dead_code)]
 struct Window {
     globals: &'static crate::Globals,
-    window: Rc<crate::window::Window>,
+    window: Arc<crate::window::Window>,
 }
 
 impl LuaUserData for Window {

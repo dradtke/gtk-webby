@@ -1,14 +1,15 @@
-use std::cell::RefCell;
 use std::io::Read;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use glib::{clone, Continue, MainContext, PRIORITY_DEFAULT};
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 
+pub type WindowList = Arc<Mutex<Vec<Arc<Window>>>>;
+
 pub struct Window {
     #[allow(dead_code)]
-    app_window: gtk::ApplicationWindow,
+    pub app_window: gtk::ApplicationWindow,
     back_button: gtk::Button,
     forward_button: gtk::Button,
     refresh_button: gtk::Button,
@@ -18,8 +19,9 @@ pub struct Window {
     info_bar: gtk::InfoBar,
     info_bar_text: gtk::Label,
     status_label: gtk::Label,
-    pub state: RefCell<State>,
+    pub state: Mutex<State>,
 }
+
 
 pub struct State {
     pub globals: &'static crate::Globals,
@@ -31,8 +33,11 @@ pub struct State {
     user_styles: Option<gtk::CssProvider>,
 }
 
+unsafe impl Send for Window {}
+unsafe impl Sync for Window {}
+
 impl Window {
-    pub fn new(app: &gtk::Application, globals: &'static crate::Globals) -> Rc<Self> {
+    pub fn new(app: &gtk::Application, globals: &'static crate::Globals) -> Arc<Self> {
         // Icon names are documented here: https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
         let back_button = gtk::Button::from_icon_name("go-previous");
         back_button.set_sensitive(false);
@@ -117,7 +122,7 @@ impl Window {
             history: crate::history::History::new(),
             ui_definition: None,
         };
-        let window = Rc::new(Self {
+        let window = Arc::new(Self {
             app_window,
             back_button,
             forward_button,
@@ -128,7 +133,7 @@ impl Window {
             info_bar,
             info_bar_text,
             status_label,
-            state: RefCell::new(state),
+            state: Mutex::new(state),
         });
 
         crate::script::lua::init(window.clone());
@@ -136,14 +141,14 @@ impl Window {
         window
             .back_button
             .connect_clicked(clone!(@weak window => move |_| {
-                let location = window.state.borrow_mut().history.back();
+                let location = window.state.lock().unwrap().history.back();
                 window.go(location, false);
             }));
 
         window
             .forward_button
             .connect_clicked(clone!(@weak window => move |_| {
-                let location = window.state.borrow_mut().history.forward();
+                let location = window.state.lock().unwrap().history.forward();
                 window.go(location, false);
             }));
 
@@ -170,12 +175,18 @@ impl Window {
         window
     }
 
-    fn define_actions(self: &Rc<Self>) {
+    pub fn active(windows: &WindowList) -> Arc<Self> {
+        let windows: &Vec<Arc<Window>> = &windows.lock().unwrap();
+        let window = windows.iter().find(|w| w.app_window.is_active()).unwrap_or(windows.get(0).unwrap());
+        window.clone()
+    }
+
+    fn define_actions(self: &Arc<Self>) {
         let open_source_editor = gio::SimpleAction::new("open-source-editor", None);
         open_source_editor.connect_activate(
             clone!(@weak self as window => move |_action, _param| {
                 let app_window = window.app_window.clone();
-                let starting_text = window.state.borrow().ui_definition.as_ref().map(|def| def.source.clone());
+                let starting_text = window.state.lock().unwrap().ui_definition.as_ref().map(|def| def.source.clone());
                 let editor = crate::editor::Editor::new(&app_window, starting_text, move |text| {
                     if let Err(err) = window.clone().render_gtk(text) {
                         println!("Failed to render: {}", err);
@@ -187,17 +198,17 @@ impl Window {
         self.app_window.add_action(&open_source_editor);
     }
 
-    fn go(self: Rc<Self>, location: String, modify_history: bool) {
+    pub fn go(self: Arc<Self>, location: String, modify_history: bool) {
         self.address_entry.set_text(&location);
         self.info_bar.set_revealed(false);
 
         // TODO: support file://
 
         //println!("Navigating to: {}", &location);
-        self.state.borrow_mut().ui_definition = None;
+        self.state.lock().unwrap().ui_definition = None;
         self.status_label
             .set_label(&format!("Loading {}...", &location));
-        let request = self.state.borrow().http_client.get(&location);
+        let request = self.state.lock().unwrap().http_client.get(&location);
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         std::thread::spawn(move || {
             let response_result = request.send();
@@ -215,7 +226,7 @@ impl Window {
                 //}
 
                 window.content.set_child(gtk::Widget::NONE);
-                window.state.borrow_mut().location = response.url().to_string();
+                window.state.lock().unwrap().location = response.url().to_string();
 
                 let mime_type: mime::Mime = match response.headers().get(reqwest::header::CONTENT_TYPE) {
                     Some(content_type) => content_type.to_str()?.parse()?,
@@ -244,12 +255,12 @@ impl Window {
                 println!("Navigation error: {}", err);
             } else {
                 if modify_history {
-                    self.state.borrow_mut().history.push(location.clone());
+                    self.state.lock().unwrap().history.push(location.clone());
                 }
             }
 
-            self.back_button.set_sensitive(self.state.borrow().history.can_go_back());
-            self.forward_button.set_sensitive(self.state.borrow().history.can_go_forward());
+            self.back_button.set_sensitive(self.state.lock().unwrap().history.can_go_back());
+            self.forward_button.set_sensitive(self.state.lock().unwrap().history.can_go_forward());
             self.refresh_button.set_sensitive(true);
 
             window.status_label.set_text("");
@@ -263,21 +274,21 @@ impl Window {
         Ok(s)
     }
 
-    fn render_text(self: Rc<Self>, s: String) -> crate::Result<()> {
+    fn render_text(self: Arc<Self>, s: String) -> crate::Result<()> {
         self.content.set_child(Some(&gtk::TextView::with_buffer(
             &gtk::TextBuffer::builder().text(&s).build(),
         )));
         Ok(())
     }
 
-    fn render_gtk(self: Rc<Self>, s: String) -> crate::Result<()> {
+    fn render_gtk(self: Arc<Self>, s: String) -> crate::Result<()> {
         let ui_definition = crate::ui::Definition::new(s)?;
 
         // Remove existing user-requested CSS styling, if there is any.
-        if let Some(user_styles) = self.state.borrow().user_styles.as_ref() {
+        if let Some(user_styles) = self.state.lock().unwrap().user_styles.as_ref() {
             gtk::style_context_remove_provider_for_display(&self.display(), user_styles);
         }
-        self.state.borrow_mut().user_styles = None;
+        self.state.lock().unwrap().user_styles = None;
 
         // If the new page has styles, apply them.
         if !ui_definition.styles.is_empty() {
@@ -288,7 +299,7 @@ impl Window {
                 &user_styles,
                 gtk::STYLE_PROVIDER_PRIORITY_USER,
             );
-            self.state.borrow_mut().user_styles = Some(user_styles);
+            self.state.lock().unwrap().user_styles = Some(user_styles);
         }
 
         // Set the window title to that requested by the user, or the location if there was
@@ -298,7 +309,7 @@ impl Window {
                 .title
                 .as_ref()
                 .map(|s| s.clone())
-                .unwrap_or(self.state.borrow().location.clone()),
+                .unwrap_or(self.state.lock().unwrap().location.clone()),
         ));
 
         // Construct the GTK builder from the UI definition.
@@ -329,35 +340,35 @@ impl Window {
             }
         }
 
-        self.state.borrow_mut().builder = builder;
+        self.state.lock().unwrap().builder = builder;
 
         // Run any defined scripts.
         for script in &ui_definition.scripts {
             script.execute(&self);
         }
 
-        self.state.borrow_mut().ui_definition = Some(ui_definition);
+        self.state.lock().unwrap().ui_definition = Some(ui_definition);
 
         // Clean up any old Lua registry values, such as now-unreferenced callbacks.
-        self.state.borrow().globals.lua.expire_registry_values();
+        self.state.lock().unwrap().globals.lua.expire_registry_values();
 
         Ok(())
     }
 
-    fn href(self: Rc<Self>, target: &String) {
-        let location = crate::util::absolutize_url(&self.state.borrow().location, target);
+    fn href(self: Arc<Self>, target: &String) {
+        let location = crate::util::absolutize_url(&self.state.lock().unwrap().location, target);
         self.address_entry.set_text(&location);
         self.go(location, true);
     }
 
-    pub fn reload(self: Rc<Self>) {
-        let location = self.state.borrow().location.clone();
+    pub fn reload(self: Arc<Self>) {
+        let location = self.state.lock().unwrap().location.clone();
         if !location.is_empty() {
             self.go(location, false);
         }
     }
 
-    pub fn alert(self: Rc<Self>, text: &str) {
+    pub fn alert(self: Arc<Self>, text: &str) {
         let dialog = gtk::Dialog::builder()
             .title("Alert")
             .child(&gtk::Label::new(Some(text)))

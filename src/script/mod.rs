@@ -51,7 +51,7 @@ impl Script {
         match self.lang {
             Lang::Lua => {
                 println!("Executing Lua: {}", &self.text);
-                if let Err(err) = window.state.borrow().globals.lua.load(&self.text).exec() {
+                if let Err(err) = window.state.lock().unwrap().globals.lua.load(&self.text).exec() {
                     println!("Lua script execution error: {}", err);
                 }
             }

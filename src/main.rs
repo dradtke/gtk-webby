@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 mod actions;
 mod editor;
@@ -66,7 +67,7 @@ fn main() -> Result<ExitCode> {
         Some("0.0.0.0:8000"),
     );
 
-    let windows = Rc::new(RefCell::new(vec![]));
+    let windows: window::WindowList = Arc::new(Mutex::new(vec![]));
     let root_certs = Rc::new(RefCell::new(vec![]));
     let file_monitors = Rc::new(RefCell::new(vec![]));
     let webdriver_listeners = Rc::new(RefCell::new(vec![]));
@@ -108,7 +109,7 @@ fn main() -> Result<ExitCode> {
 
             match dict.lookup::<String>("bind-webdriver") {
                 Ok(Some(addr)) => {
-                    match crate::webdriver::run(&addr) {
+                    match crate::webdriver::run(windows.clone(), &addr) {
                         Ok(listener) => {
                             println!("Listening for WebDriver requests on {}", &addr);
                             webdriver_listeners.borrow_mut().push(listener);
@@ -151,7 +152,7 @@ fn main() -> Result<ExitCode> {
             lua: Lua::new(),
         }));
         let window = window::Window::new(app, globals);
-        windows.borrow_mut().push(window);
+        windows.lock().unwrap().push(window);
     });
 
     Ok(app.run())
@@ -189,7 +190,7 @@ fn build_menu() -> gio::Menu {
 }
 
 fn watch_path(
-    windows: Rc<RefCell<Vec<Rc<window::Window>>>>,
+    windows: Arc<Mutex<Vec<Arc<window::Window>>>>,
     path: &str,
 ) -> Option<gio::FileMonitor> {
     let file = gio::File::for_path(path);
@@ -206,7 +207,8 @@ fn watch_path(
             if let Some(path) = file.path() {
                 println!("{:?} changed", &path);
             }
-            for window in windows.borrow().iter() {
+            let windows = windows.lock().unwrap();
+            for window in windows.iter() {
                 window.clone().reload();
             }
         }
